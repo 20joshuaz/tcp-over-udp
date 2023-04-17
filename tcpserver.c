@@ -1,12 +1,11 @@
 #include <arpa/inet.h>
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 #include "helpers.h"
-
-#define BUFFER_SIZE 1000
 
 void runServer(char *file, int listenPort, char *ackAddress, int ackPort) {
     int serverSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -27,10 +26,14 @@ void runServer(char *file, int listenPort, char *ackAddress, int ackPort) {
     }
 
     char clientMsg[BUFFER_SIZE];
-    if (recv(serverSocket, clientMsg, BUFFER_SIZE, 0) < 0) {
+    ssize_t clientMsgLen;
+    if ((clientMsgLen = recvfrom(serverSocket, clientMsg, BUFFER_SIZE, 0, NULL, NULL)) < 0) {
         printf("error: failed to receive\n");
         return;
     }
+
+    assert(clientMsgLen == HEADER_LEN);
+
 
     close(serverSocket);
 }
