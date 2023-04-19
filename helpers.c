@@ -1,29 +1,35 @@
 #include <ctype.h>
-#include <stdint.h>
+// #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
-int BUFFER_SIZE = 1000;
-int HEADER_LEN = 20;
-int MSS = 576;
+#include "helpers.h"
+
+int getNthBit(int num, int n) {
+    return num >> n & 1;
+}
+
+int setNthBit(int num, int n) {
+    return num | (1 << n);
+}
 
 void doBitwiseSum(uint16_t a, uint16_t b, uint16_t *resPtr, uint16_t *carryoverPtr) {
     uint16_t res = 0;
     int carryover = 0;
-    for (int i = 0; i < 16; i++) {
-        int currA = a >> i & 1;
-        int currB = b >> i & 1;
+    for(int i = 0; i < 16; i++) {
+        int currA = getNthBit(a, i);
+        int currB = getNthBit(b, i);
 
         int sum = currA + currB + carryover;
-        if (sum == 1) {
-            res |= 1 << i;
+        if(sum == 1) {
+            res = setNthBit(res, i);
             carryover = 0;
         }
-        else if (sum == 2) {
+        else if(sum == 2) {
             carryover = 1;
         }
-        else if (sum == 3) {
-            res |= 1 << i;
+        else if(sum == 3) {
+            res = setNthBit(res, i);
             carryover = 1;
         }
     }
@@ -34,55 +40,73 @@ void doBitwiseSum(uint16_t a, uint16_t b, uint16_t *resPtr, uint16_t *carryoverP
 uint16_t calculateSumWithOverflow(uint16_t a, uint16_t b) {
     do {
         doBitwiseSum(a, b, &a, &b);
-    } while (b);
+    } while(b);
     return a;
 }
 
-uint16_t getWord(char *segment, int offset) {
-    return *(uint16_t *)(segment + offset);
+uint16_t calculateSumOfHeaderWords(struct TCPSegment segment) {
+    uint16_t *rawSegmentPtr = (uint16_t *)&segment;
+    uint16_t sum = 0;
+    for(int i = 0; i < HEADER_LEN / 2; i++) {
+        sum = calculateSumWithOverflow(sum, *(rawSegmentPtr + i));
+    }
+    return sum;
 }
 
-void makeTCPHeader(char *segment, uint16_t sourcePort, uint16_t destPort, uint32_t seqNum, uint32_t ackNum,
-                    int setACK, int setSYN, int setFIN) {
-    // port numbers
-    *(uint16_t *)segment = sourcePort;
-    *(uint16_t *)(segment + 2) = destPort;
+struct TCPSegment fillTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_t seqNum, uint32_t ackNum,
+        int setACK, int setSYN, int setFIN, char *data, int dataLen) {
+    struct TCPSegment segment;
 
-    // seq and ack numbers
-    *(uint32_t *)(segment + 4) = seqNum;
-    *(uint32_t *)(segment + 8) = ackNum;
+    segment.sourcePort = sourcePort;
+    segment.destPort = destPort;
+    segment.seqNum = seqNum;
+    segment.ackNum = ackNum;
 
-    // header length
-    *(uint8_t *)(segment + 12) = 5 << 4;  // 01010000
+    segment.length = 5 << 4;  // 01010000
 
-    // flags
-    uint8_t *flags = (uint8_t *)(segment + 13);
-    *flags = 0;
-    uint8_t mask = 1;
-    *flags |= mask * setFIN;
-    *flags |= (mask << 1) * setSYN;
-    *flags |= (mask << 4) * setACK;
+    uint8_t flags = 0;
+    if(setFIN) {
+        flags = setNthBit(flags, 0);
+    }
+    if(setSYN) {
+        flags = setNthBit(flags, 1);
+    }
+    if(setACK) {
+        flags = setNthBit(flags, 4);
+    }
+    segment.flags = flags;
 
-    // receive window
-    *(uint16_t *)(segment + 14) = 0;
+    segment.recvWindow = 0;
+    segment.checksum = 0;
+    segment.urgentPtr = 0;
 
-    // urgent data pointer
-    *(uint16_t *)(segment + 18) = 0;
+    uint16_t checksum = calculateSumOfHeaderWords(segment);
+    segment.checksum = ~checksum;
 
-    // checksum
-    uint16_t checksum = 0;
-    for (int i = 0; i <= 18; i += 2) {
-        if (i != 16) {
-            checksum = calculateSumWithOverflow(checksum, getWord(segment, i));
+    strncpy(segment.data, data, dataLen);
+
+    return segment;
+}
+
+struct TCPSegment parseTCPSegment(char *rawSegment, int segmentLen) {
+    struct TCPSegment segment;
+    strncpy((char *)&segment, rawSegment, segmentLen);
+    return segment;
+}
+
+int isChecksumValid(struct TCPSegment segment) {
+    uint16_t totalSum = calculateSumOfHeaderWords(segment);
+    for(int i = 0; i < 16; i++) {
+        if(!getNthBit(totalSum, i)) {
+            return 0;
         }
     }
-    checksum = ~checksum;
-    *(uint16_t *)(segment + 16) = checksum;
+    return 1;
 }
 
 int isNumber(char *s) {
-    for (char *trav = s; *trav; trav++) {
-        if (!isdigit(*trav)) {
+    for(char *trav = s; *trav; trav++) {
+        if(!isdigit(*trav)) {
             return 0;
         }
     }
@@ -90,10 +114,10 @@ int isNumber(char *s) {
 }
 
 int getPort(char *portStr) {
-    if (!isNumber(portStr)) {
+    if(!isNumber(portStr)) {
         return 0;
     }
-    int port = atoi(portStr);
+    int port = (int)strtol(portStr, NULL, 10);
     return (port >= 1024 && port <= 65535) * port;
 }
 
@@ -101,10 +125,10 @@ int isValidIP(char *ip) {
     char *trav = ip;
     int numDots = 0;
     char curr;
-    while ((curr = *trav++)) {
+    while((curr = *trav++)) {
         numDots += (curr == '.');
     }
-    if (numDots != 3) {
+    if(numDots != 3) {
         return 0;
     }
 
@@ -113,12 +137,12 @@ int isValidIP(char *ip) {
 
     char delim[] = ".";
     char *token = strtok(ipCopy, delim);
-    while (token) {
-        if (!isNumber(token)) {
+    while(token) {
+        if(!isNumber(token)) {
             return 0;
         }
-        int part = atoi(token);
-        if (!(part >= 0 && part <= 255)) {
+        int part = (int)strtol(token, NULL, 10);
+        if(!(part >= 0 && part <= 255)) {
             return 0;
         }
         token = strtok(NULL, delim);
