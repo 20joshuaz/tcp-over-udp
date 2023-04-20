@@ -53,7 +53,7 @@ uint16_t calculateSumOfHeaderWords(struct TCPSegment segment) {
     return sum;
 }
 
-struct TCPSegment fillTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_t seqNum, uint32_t ackNum,
+struct TCPSegment createTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_t seqNum, uint32_t ackNum,
         int setACK, int setSYN, int setFIN, char *data, int dataLen) {
     struct TCPSegment segment;
 
@@ -83,12 +83,14 @@ struct TCPSegment fillTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_
     uint16_t checksum = calculateSumOfHeaderWords(segment);
     segment.checksum = ~checksum;
 
-    strncpy(segment.data, data, dataLen);
+    if(data) {
+        strncpy(segment.data, data, dataLen);
+    }
 
     return segment;
 }
 
-struct TCPSegment parseTCPSegment(char *rawSegment, int segmentLen) {
+struct TCPSegment parseToTCPSegment(char *rawSegment, int segmentLen) {
     struct TCPSegment segment;
     strncpy((char *)&segment, rawSegment, segmentLen);
     return segment;
@@ -110,7 +112,7 @@ int isNumber(char *s) {
             return 0;
         }
     }
-    return *s;  // returns false for empty string
+    return *s != 0;  // returns false for empty string
 }
 
 int getPort(char *portStr) {

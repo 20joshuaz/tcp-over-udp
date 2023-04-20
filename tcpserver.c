@@ -20,13 +20,12 @@ void runServer(char *file, int listenPort, char *ackAddress, int ackPort) {
         return;
     }
 
-    struct sockaddr_in servAddr;
-    memset(&servAddr, 0, sizeof(servAddr));
-    servAddr.sin_family = AF_INET;
-    servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    servAddr.sin_port = htons(listenPort);
-
-    if(bind(serverSocket, (struct sockaddr *)&servAddr, sizeof(servAddr)) < 0) {
+    struct sockaddr_in serverAddr;
+    memset(&serverAddr, 0, sizeof(serverAddr));
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    serverAddr.sin_port = htons(listenPort);
+    if(bind(serverSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
         printf("error: failed to bind port\n");
         return;
     }
@@ -41,7 +40,7 @@ void runServer(char *file, int listenPort, char *ackAddress, int ackPort) {
     }
     assert(clientMsgLen == HEADER_LEN);
 
-    segment = parseTCPSegment(clientMsg, clientMsgLen);
+    segment = parseToTCPSegment(clientMsg, clientMsgLen);
     assert(isSYNSet(segment));
 
     close(serverSocket);
@@ -49,7 +48,7 @@ void runServer(char *file, int listenPort, char *ackAddress, int ackPort) {
 
 int main(int argc, char **argv) {
     if(argc != 5) {
-        printf("usage: tcpserver <file> <listening port> <address for acks> <port for acks>\n");
+        printf("usage: tcpserver <file> <listening port> <ack address> <ack port>\n");
         return 0;
     }
 
@@ -61,12 +60,12 @@ int main(int argc, char **argv) {
     }
     char *ackAddress = argv[3];
     if(!isValidIP(ackAddress)) {
-        printf("error: invalid address for acks\n");
+        printf("error: invalid ack address\n");
         return 0;
     }
     int ackPort = getPort(argv[4]);
     if(!ackPort) {
-        printf("error: invalid port for acks\n");
+        printf("error: invalid ack port\n");
         return 0;
     }
 
