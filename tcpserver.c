@@ -9,10 +9,6 @@
 
 #define BUFFER_SIZE 1000
 
-int isSYNSet(struct TCPSegment segment) {
-    return getNthBit(segment.flags, 1);
-}
-
 void runServer(char *file, int listenPort, char *ackAddress, int ackPort) {
     int serverSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if(serverSocket < 0) {
@@ -30,8 +26,6 @@ void runServer(char *file, int listenPort, char *ackAddress, int ackPort) {
         return;
     }
 
-    struct TCPSegment segment;
-
     char clientMsg[BUFFER_SIZE];
     int clientMsgLen;
     if((clientMsgLen = (int)recvfrom(serverSocket, clientMsg, BUFFER_SIZE, 0, NULL, NULL)) < 0) {
@@ -40,8 +34,9 @@ void runServer(char *file, int listenPort, char *ackAddress, int ackPort) {
     }
     assert(clientMsgLen == HEADER_LEN);
 
+    struct TCPSegment segment;
     segment = parseToTCPSegment(clientMsg, clientMsgLen);
-    assert(isSYNSet(segment));
+    assert(isSYNSet(segment.flags));
 
     close(serverSocket);
 }

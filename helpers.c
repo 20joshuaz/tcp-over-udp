@@ -5,6 +5,10 @@
 
 #include "helpers.h"
 
+void doNothing(int signum) {
+
+}
+
 int getNthBit(int num, int n) {
     return num >> n & 1;
 }
@@ -94,6 +98,18 @@ struct TCPSegment parseToTCPSegment(char *rawSegment, int segmentLen) {
     struct TCPSegment segment;
     strncpy((char *)&segment, rawSegment, segmentLen);
     return segment;
+}
+
+int isACKSet(uint8_t flags) {
+    return getNthBit(flags, 4);
+}
+
+int isSYNSet(uint8_t flags) {
+    return getNthBit(flags, 1);
+}
+
+int isFINSet(uint8_t flags) {
+    return getNthBit(flags, 0);
 }
 
 int isChecksumValid(struct TCPSegment segment) {

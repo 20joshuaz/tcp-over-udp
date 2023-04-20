@@ -1,5 +1,7 @@
 #include <arpa/inet.h>
 #include <assert.h>
+#include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,6 +9,10 @@
 #include <unistd.h>
 
 #include "helpers.h"
+
+#define BUFFER_SIZE 1000
+#define INITIAL_TIMEOUT 3
+#define RETRIES 3
 
 void runClient(char *file, char *udplAddress, int udplPort, int windowSize, int ackPort) {
     int clientSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -25,31 +31,47 @@ void runClient(char *file, char *udplAddress, int udplPort, int windowSize, int 
         return;
     }
 
-    struct sockaddr_in serverAddr;
-    memset(&clientAddr, 0, sizeof(clientAddr));
-    clientAddr.sin_family = AF_INET;
-    clientAddr.sin_addr.s_addr = inet_addr(udplAddress);
-    clientAddr.sin_port = htons(udplPort);
+    struct sockaddr_in udplAddr;
+    memset(&udplAddr, 0, sizeof(udplAddr));
+    udplAddr.sin_family = AF_INET;
+    udplAddr.sin_addr.s_addr = inet_addr(udplAddress);
+    udplAddr.sin_port = htons(udplPort);
+
+    DO_NOTHING_ON_ALARM;
 
     struct TCPSegment segment;
-    fd_set fds;
-    FD_ZERO(&fds);
-    struct timeval tv = {5, 0};
     int seqNum = 0;
-    int ackNum;
+    // int ackNum;
 
     segment = createTCPSegment(ackPort, udplPort, seqNum, 0, 0, 1, 0, NULL, 0);
-    if(sendto(clientSocket, &segment, HEADER_LEN, 0, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) != HEADER_LEN) {
-        printf("error: failed to send SYN\n");
+    if(sendto(clientSocket, &segment, HEADER_LEN, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != HEADER_LEN) {
+        printf("error: failed to send to socket\n");
         return;
     }
 
-    FD_SET(clientSocket, &fds);
+    char serverMsg[BUFFER_SIZE];
+    int serverMsgLen;
+    for(int i = 0; i < RETRIES; i++) {
+        WRAP_IN_ALARM(serverMsgLen = (int)recvfrom(clientSocket, serverMsg, BUFFER_SIZE, 0, NULL, NULL), INITIAL_TIMEOUT);
+        if(errno == EINTR) {
+            printf("warning: failed to receive SYNACK\n");
+            continue;
+        }
+        if(serverMsgLen < 0) {
+            printf("error: failed to read from socket\n");
+            return;
+        }
+        // else valid serverMsg
+        break;
+    }
+
+    close(clientSocket);
 }
 
 int main(int argc, char **argv) {
     if(argc != 6) {
         printf("usage: tcpclient <file> <address of udpl> <port of udpl> <window size> <ack port>\n");
+        return 0;
     }
 
     char *file = argv[1];
