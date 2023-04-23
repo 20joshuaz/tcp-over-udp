@@ -48,8 +48,8 @@ uint16_t calculateSumWithOverflow(uint16_t a, uint16_t b) {
     return a;
 }
 
-uint16_t calculateSumOfHeaderWords(struct TCPSegment segment) {
-    uint16_t *rawSegmentPtr = (uint16_t *)&segment;
+uint16_t calculateSumOfHeaderWords(struct TCPHeader header) {
+    uint16_t *rawSegmentPtr = (uint16_t *)&header;
     uint16_t sum = 0;
     for(int i = 0; i < HEADER_LEN / 2; i++) {
         sum = calculateSumWithOverflow(sum, *(rawSegmentPtr + i));
@@ -59,14 +59,14 @@ uint16_t calculateSumOfHeaderWords(struct TCPSegment segment) {
 
 struct TCPSegment createTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_t seqNum, uint32_t ackNum,
         int setACK, int setSYN, int setFIN, char *data, int dataLen) {
-    struct TCPSegment segment;
+    struct TCPHeader header;
 
-    segment.sourcePort = sourcePort;
-    segment.destPort = destPort;
-    segment.seqNum = seqNum;
-    segment.ackNum = ackNum;
+    header.sourcePort = sourcePort;
+    header.destPort = destPort;
+    header.seqNum = seqNum;
+    header.ackNum = ackNum;
 
-    segment.length = 5 << 4;  // 01010000
+    header.length = 5 << 4;  // 01010000
 
     uint8_t flags = 0;
     if(setFIN) {
@@ -78,15 +78,17 @@ struct TCPSegment createTCPSegment(uint16_t sourcePort, uint16_t destPort, uint3
     if(setACK) {
         flags = setNthBit(flags, 4);
     }
-    segment.flags = flags;
+    header.flags = flags;
 
-    segment.recvWindow = 0;
-    segment.checksum = 0;
-    segment.urgentPtr = 0;
+    header.recvWindow = 0;
+    header.checksum = 0;
+    header.urgentPtr = 0;
 
-    uint16_t checksum = calculateSumOfHeaderWords(segment);
-    segment.checksum = ~checksum;
+    uint16_t checksum = calculateSumOfHeaderWords(header);
+    header.checksum = ~checksum;
 
+    struct TCPSegment segment;
+    segment.header = header;
     if(data) {
         strncpy(segment.data, data, dataLen);
     }
@@ -94,26 +96,26 @@ struct TCPSegment createTCPSegment(uint16_t sourcePort, uint16_t destPort, uint3
     return segment;
 }
 
-struct TCPSegment parseToTCPSegment(char *rawSegment, int segmentLen) {
+struct TCPSegment parseTCPSegment(char *rawSegment, int segmentLen) {
     struct TCPSegment segment;
     strncpy((char *)&segment, rawSegment, segmentLen);
     return segment;
 }
 
-int isACKSet(uint8_t flags) {
-    return getNthBit(flags, 4);
+int isACKSet(struct TCPHeader header) {
+    return getNthBit(header.flags, 4);
 }
 
-int isSYNSet(uint8_t flags) {
-    return getNthBit(flags, 1);
+int isSYNSet(struct TCPHeader header) {
+    return getNthBit(header.flags, 1);
 }
 
-int isFINSet(uint8_t flags) {
-    return getNthBit(flags, 0);
+int isFINSet(struct TCPHeader header) {
+    return getNthBit(header.flags, 0);
 }
 
-int isChecksumValid(struct TCPSegment segment) {
-    uint16_t totalSum = calculateSumOfHeaderWords(segment);
+int doesChecksumAgree(struct TCPHeader header) {
+    uint16_t totalSum = calculateSumOfHeaderWords(header);
     for(int i = 0; i < 16; i++) {
         if(!getNthBit(totalSum, i)) {
             return 0;

@@ -12,7 +12,7 @@
 
 #define BUFFER_SIZE 1000
 #define INITIAL_TIMEOUT 3
-#define RETRIES 3
+// #define RETRIES 3
 
 void runClient(char *file, char *udplAddress, int udplPort, int windowSize, int ackPort) {
     int clientSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -37,22 +37,26 @@ void runClient(char *file, char *udplAddress, int udplPort, int windowSize, int 
     udplAddr.sin_addr.s_addr = inet_addr(udplAddress);
     udplAddr.sin_port = htons(udplPort);
 
-    DO_NOTHING_ON_ALARM;
+    DO_NOTHING_ON_ALARM
 
     struct TCPSegment segment;
     int seqNum = 0;
-    // int ackNum;
-
-    segment = createTCPSegment(ackPort, udplPort, seqNum, 0, 0, 1, 0, NULL, 0);
-    if(sendto(clientSocket, &segment, HEADER_LEN, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != HEADER_LEN) {
-        printf("error: failed to send to socket\n");
-        return;
-    }
-
+    int serverSeqNum;
     char serverMsg[BUFFER_SIZE];
     int serverMsgLen;
-    for(int i = 0; i < RETRIES; i++) {
-        WRAP_IN_ALARM(serverMsgLen = (int)recvfrom(clientSocket, serverMsg, BUFFER_SIZE, 0, NULL, NULL), INITIAL_TIMEOUT);
+
+    printf("log: sending connection request\n");
+    segment = createTCPSegment(ackPort, udplPort, seqNum, 0, 0, 1, 0, NULL, 0);
+    do {
+        if(sendto(clientSocket, &segment, HEADER_LEN, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != HEADER_LEN) {
+            printf("error: failed to send to socket\n");
+            return;
+        }
+
+        errno = 0;
+        alarm(INITIAL_TIMEOUT);
+        serverMsgLen = (int)recvfrom(clientSocket, serverMsg, BUFFER_SIZE, 0, NULL, NULL);
+        alarm(0);
         if(errno == EINTR) {
             printf("warning: failed to receive SYNACK\n");
             continue;
@@ -61,9 +65,13 @@ void runClient(char *file, char *udplAddress, int udplPort, int windowSize, int 
             printf("error: failed to read from socket\n");
             return;
         }
-        // else valid serverMsg
-        break;
-    }
+        segment = parseTCPSegment(serverMsg, serverMsgLen);
+    } while(doesChecksumAgree(segment.header) && isSYNSet(segment.header) && isACKSet(segment.header));
+
+    printf("log: received SYNACK, sending ACK (not implemented)\n");
+    // segment = parseTCPSegment(serverMsg, serverMsgLen);
+    // assert(isSYNSet(segment.header) && isACKSet(segment.header));
+    printf("Success\n");
 
     close(clientSocket);
 }
