@@ -1,5 +1,6 @@
 #include <ctype.h>
 // #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -57,7 +58,7 @@ uint16_t calculateSumOfHeaderWords(struct TCPHeader header) {
     return sum;
 }
 
-struct TCPSegment createTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_t seqNum, uint32_t ackNum,
+struct TCPSegment makeTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_t seqNum, uint32_t ackNum,
         int setACK, int setSYN, int setFIN, char *data, int dataLen) {
     struct TCPHeader header;
 
@@ -96,10 +97,8 @@ struct TCPSegment createTCPSegment(uint16_t sourcePort, uint16_t destPort, uint3
     return segment;
 }
 
-struct TCPSegment parseTCPSegment(char *rawSegment, int segmentLen) {
-    struct TCPSegment segment;
-    strncpy((char *)&segment, rawSegment, segmentLen);
-    return segment;
+struct TCPSegment parseTCPSegment(const char *rawSegment) {
+    return *(struct TCPSegment *)rawSegment;
 }
 
 int isACKSet(struct TCPHeader header) {
@@ -122,6 +121,20 @@ int doesChecksumAgree(struct TCPHeader header) {
         }
     }
     return 1;
+}
+
+void printTCPHeader(struct TCPHeader header) {
+    printf("{\n");
+    printf("\tsourcePort=%d\n", header.sourcePort);
+    printf("\tdestPort=%d\n", header.destPort);
+    printf("\tseqNum=%d\n", header.seqNum);
+    printf("\tackNum=%d\n", header.ackNum);
+    printf("\tlength=%d\n", header.length);
+    printf("\tflags=%x\n", header.flags);
+    printf("\trecvWindow=%d\n", header.recvWindow);
+    printf("\tchecksum=%x\n", header.checksum);
+    printf("\turgentPtr=%d\n", header.urgentPtr);
+    printf("}\n");
 }
 
 int isNumber(char *s) {

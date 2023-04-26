@@ -11,8 +11,26 @@
 #include "helpers.h"
 
 #define BUFFER_SIZE 1000
-#define INITIAL_TIMEOUT 3
-// #define RETRIES 3
+#define INITIAL_TIMEOUT 1
+#define ALPHA 0.125
+#define BETA 0.25
+
+void updateRTTAndTimeout(int sampleRttPtr, int *estimatedRttPtr, int *devRttPtr, int *timeoutPtr, float alpha, float beta) {
+    if(*estimatedRttPtr < 0) {
+        *estimatedRttPtr = sampleRttPtr;
+        *devRttPtr = sampleRttPtr / 2;
+        *timeoutPtr = *estimatedRttPtr + 4 * *devRttPtr;
+        return;
+    }
+
+    float newEstimatedRtt = (1 - alpha) * (float)*estimatedRttPtr + alpha * (float)sampleRttPtr;
+    float newDevRtt = (1 - beta) * (float)(*devRttPtr) + beta * (float)abs(sampleRttPtr - *estimatedRttPtr);
+    float newTimeout = newEstimatedRtt + 4 * newDevRtt;
+
+    *estimatedRttPtr = (int)newEstimatedRtt;
+    *devRttPtr = (int)newDevRtt;
+    *timeoutPtr = (int)newTimeout;
+}
 
 void runClient(char *file, char *udplAddress, int udplPort, int windowSize, int ackPort) {
     int clientSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -41,12 +59,19 @@ void runClient(char *file, char *udplAddress, int udplPort, int windowSize, int 
 
     struct TCPSegment segment;
     int seqNum = 0;
-    int serverSeqNum;
+    uint32_t serverSeqNum;
+    int timeout = INITIAL_TIMEOUT * 1e6;
+    int isFirstTransmission;
+    int sampleRtt;
+    int estimatedRtt = -1;
+    int devRtt;
     char serverMsg[BUFFER_SIZE];
     int serverMsgLen;
 
+    segment = makeTCPSegment(ackPort, udplPort, seqNum++, 0, 0, 1, 0, NULL, 0);
+
     printf("log: sending connection request\n");
-    segment = createTCPSegment(ackPort, udplPort, seqNum, 0, 0, 1, 0, NULL, 0);
+    isFirstTransmission = 1;
     do {
         if(sendto(clientSocket, &segment, HEADER_LEN, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != HEADER_LEN) {
             printf("error: failed to send to socket\n");
@@ -54,24 +79,29 @@ void runClient(char *file, char *udplAddress, int udplPort, int windowSize, int 
         }
 
         errno = 0;
-        alarm(INITIAL_TIMEOUT);
+        ualarm(timeout, 0);
         serverMsgLen = (int)recvfrom(clientSocket, serverMsg, BUFFER_SIZE, 0, NULL, NULL);
-        alarm(0);
+        sampleRtt = (int)(timeout - ualarm(0, 0));
         if(errno == EINTR) {
             printf("warning: failed to receive SYNACK\n");
+            isFirstTransmission = 0;
+            timeout *= 2;
             continue;
         }
         if(serverMsgLen < 0) {
             printf("error: failed to read from socket\n");
             return;
         }
-        segment = parseTCPSegment(serverMsg, serverMsgLen);
-    } while(doesChecksumAgree(segment.header) && isSYNSet(segment.header) && isACKSet(segment.header));
+        segment = parseTCPSegment(serverMsg);
+        if(isFirstTransmission) {
+            updateRTTAndTimeout(sampleRtt, &estimatedRtt, &devRtt, &timeout, ALPHA, BETA);
+        }
+    } while(!(doesChecksumAgree(segment.header) && isSYNSet(segment.header) && isACKSet(segment.header)));
+
+    serverSeqNum = segment.header.seqNum + 1;
+    // segment = makeTCPSegment(ackPort, udplPort, );
 
     printf("log: received SYNACK, sending ACK (not implemented)\n");
-    // segment = parseTCPSegment(serverMsg, serverMsgLen);
-    // assert(isSYNSet(segment.header) && isACKSet(segment.header));
-    printf("Success\n");
 
     close(clientSocket);
 }

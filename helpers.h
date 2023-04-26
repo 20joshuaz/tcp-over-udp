@@ -27,13 +27,14 @@ struct TCPSegment {
 void doNothing(int signum);
 int getNthBit(int num, int n);
 uint16_t calculateSumOfHeaderWords(struct TCPHeader header);
-struct TCPSegment createTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_t seqNum, uint32_t ackNum,
-                                 int setACK, int setSYN, int setFIN, char *data, int dataLen);
-struct TCPSegment parseTCPSegment(char *rawSegment, int segmentLen);
+struct TCPSegment makeTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_t seqNum, uint32_t ackNum,
+        int setACK, int setSYN, int setFIN, char *data, int dataLen);
+struct TCPSegment parseTCPSegment(const char *rawSegment);
 int isACKSet(struct TCPHeader header);
 int isSYNSet(struct TCPHeader header);
 int isFINSet(struct TCPHeader header);
 int doesChecksumAgree(struct TCPHeader header);
+void printTCPHeader(struct TCPHeader header);
 int isNumber(char *s);
 int getPort(char *portStr);
 int isValidIP(char *ip);

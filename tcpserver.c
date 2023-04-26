@@ -10,7 +10,9 @@
 #include "helpers.h"
 
 #define BUFFER_SIZE 1000
-#define INITIAL_TIMEOUT 3
+#define INITIAL_TIMEOUT 1
+#define ALPHA 0.125
+#define BETA 0.25
 
 void runServer(char *file, int listenPort, char *ackAddress, int ackPort) {
     int serverSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -40,6 +42,7 @@ void runServer(char *file, int listenPort, char *ackAddress, int ackPort) {
     struct TCPSegment segment;
     int seqNum = 0;
     int clientSeqNum;
+    int timeout = INITIAL_TIMEOUT * 1e6;
     char clientMsg[BUFFER_SIZE];
     int clientMsgLen;
 
@@ -51,22 +54,24 @@ void runServer(char *file, int listenPort, char *ackAddress, int ackPort) {
             return;
         }
         assert(clientMsgLen == HEADER_LEN);
-        segment = parseTCPSegment(clientMsg, clientMsgLen);
-    } while(!doesChecksumAgree(segment.header) && isSYNSet(segment.header));
+        segment = parseTCPSegment(clientMsg);
+    } while(!(doesChecksumAgree(segment.header) && isSYNSet(segment.header)));
+
+    clientSeqNum = (int)segment.header.seqNum + 1;
 
     printf("log: received connection request, sending SYNACK\n");
-    clientSeqNum = (int)segment.header.seqNum;
-    segment = createTCPSegment(listenPort, ackPort, seqNum, clientSeqNum + 1, 1, 1, 0, NULL, 0);
+    segment = makeTCPSegment(listenPort, ackPort, seqNum, clientSeqNum, 1, 1, 0, NULL, 0);
     do {
+        printf("Heartbeat\n");
         if(sendto(serverSocket, &segment, HEADER_LEN, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != HEADER_LEN) {
             printf("error: failed to send to socket\n");
             return;
         }
 
         errno = 0;
-        alarm(INITIAL_TIMEOUT);
+        ualarm(timeout, 0);
         clientMsgLen = (int)recvfrom(serverSocket, clientMsg, BUFFER_SIZE, 0, NULL, NULL);
-        alarm(0);
+        ualarm(0, 0);
         if(errno == EINTR) {
             printf("warning: failed to receive ACK\n");
             continue;
@@ -75,8 +80,8 @@ void runServer(char *file, int listenPort, char *ackAddress, int ackPort) {
             printf("error: failed to read from socket\n");
             return;
         }
-        segment = parseTCPSegment(clientMsg, clientMsgLen);
-    } while(doesChecksumAgree(segment.header) && isACKSet(segment.header));
+        segment = parseTCPSegment(clientMsg);
+    } while(!(doesChecksumAgree(segment.header) && isACKSet(segment.header)));
 
     printf("Success\n");
     close(serverSocket);
