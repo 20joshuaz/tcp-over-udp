@@ -59,28 +59,15 @@ uint16_t calculateSumOfHeaderWords(struct TCPHeader header) {
 }
 
 struct TCPSegment makeTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_t seqNum, uint32_t ackNum,
-        int setACK, int setSYN, int setFIN, char *data, int dataLen) {
+        uint8_t flags, char *data, int dataLen) {
     struct TCPHeader header;
 
     header.sourcePort = sourcePort;
     header.destPort = destPort;
     header.seqNum = seqNum;
     header.ackNum = ackNum;
-
-    header.length = 5 << 4;  // 01010000
-
-    uint8_t flags = 0;
-    if(setFIN) {
-        flags = setNthBit(flags, 0);
-    }
-    if(setSYN) {
-        flags = setNthBit(flags, 1);
-    }
-    if(setACK) {
-        flags = setNthBit(flags, 4);
-    }
+    header.length = 0x50;  // 01010000
     header.flags = flags;
-
     header.recvWindow = 0;
     header.checksum = 0;
     header.urgentPtr = 0;
@@ -90,9 +77,8 @@ struct TCPSegment makeTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_
 
     struct TCPSegment segment;
     segment.header = header;
-    if(data) {
-        strncpy(segment.data, data, dataLen);
-    }
+    memcpy(segment.data, data, dataLen);
+    segment.length = HEADER_LEN + dataLen;
 
     return segment;
 }
@@ -101,16 +87,8 @@ struct TCPSegment parseTCPSegment(const char *rawSegment) {
     return *(struct TCPSegment *)rawSegment;
 }
 
-int isACKSet(struct TCPHeader header) {
-    return getNthBit(header.flags, 4);
-}
-
-int isSYNSet(struct TCPHeader header) {
-    return getNthBit(header.flags, 1);
-}
-
-int isFINSet(struct TCPHeader header) {
-    return getNthBit(header.flags, 0);
+int isFlagSet(struct TCPHeader header, uint8_t flag) {
+    return (header.flags & flag) != 0;
 }
 
 int doesChecksumAgree(struct TCPHeader header) {

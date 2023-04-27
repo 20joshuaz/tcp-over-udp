@@ -1,6 +1,10 @@
 #define HEADER_LEN 20
 #define MSS 576
 
+#define ACK_FLAG 0x10
+#define SYN_FLAG 0x02
+#define FIN_FLAG 0x01
+
 #define DO_NOTHING_ON_ALARM \
     struct sigaction sa; \
     memset(&sa, 0, sizeof(sa)); \
@@ -22,17 +26,17 @@ struct TCPHeader {
 struct TCPSegment {
     struct TCPHeader header;
     char data[MSS];
+
+    int length;
 };
 
 void doNothing(int signum);
 int getNthBit(int num, int n);
 uint16_t calculateSumOfHeaderWords(struct TCPHeader header);
 struct TCPSegment makeTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_t seqNum, uint32_t ackNum,
-        int setACK, int setSYN, int setFIN, char *data, int dataLen);
+        uint8_t flags, char *data, int dataLen);
 struct TCPSegment parseTCPSegment(const char *rawSegment);
-int isACKSet(struct TCPHeader header);
-int isSYNSet(struct TCPHeader header);
-int isFINSet(struct TCPHeader header);
+int isFlagSet(struct TCPHeader header, uint8_t flag);
 int doesChecksumAgree(struct TCPHeader header);
 void printTCPHeader(struct TCPHeader header);
 int isNumber(char *s);
