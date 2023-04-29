@@ -6,18 +6,28 @@ LDFLAGS = -g
 .PHONY: all
 all: tcpserver tcpclient
 
-tcpserver: helpers.a
+tcpserver: validators.a tcp.a
 
 tcpserver.o:
 
-tcpclient: helpers.a
+tcpclient: validators.a tcp.a linkedlist.a
 
 tcpclient.o:
 
-helpers.a: helpers.o
-	ar rcs helpers.a helpers.o
+validators.a: validators.o
+	ar rcs validators.a validators.o
 
-helpers.o:
+validators.o:
+
+tcp.a: tcp.o
+	ar rcs tcp.a tcp.o
+
+tcp.o:
+
+linkedlist.a: linkedlist.o
+	ar rcs linkedlist.a linkedlist.o
+
+linkedlist.o:
 
 .PHONY: clean
 clean:

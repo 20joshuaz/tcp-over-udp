@@ -1,0 +1,10 @@
+.gitignore
+.idea/
+.venv/
+newudpl*
+CMakeLists.txt
+cmake-build-debug/
+*.o
+*.a
+tcpserver
+tcpclient

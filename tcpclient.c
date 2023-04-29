@@ -8,56 +8,48 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "helpers.h"
+#include "linkedlist.h"
+#include "tcp.h"
+#include "validators.h"
 
 #define BUFFER_SIZE 1000
 #define INITIAL_TIMEOUT 1
 #define ALPHA 0.125
 #define BETA 0.25
 
-struct Node {
-    struct TCPSegment segment;
-    struct Node *next;
-};
+void doNothing(__attribute__((unused)) int signum) {}
 
-struct Node *newNode(struct TCPSegment segment, struct Node *next) {
-    struct Node *node = (struct Node *)malloc(sizeof(struct Node));
-    if(!node) {
-        perror("failed to malloc");
-        exit(1);
-    }
-    node->segment = segment;
-    node->next = next;
-    return node;
-}
+void updateRTTAndTimeout(int sampleRTT, int *estimatedRTTPtr, int *devRTTPtr, int *timeoutPtr, float alpha, float beta) {
+    assert(sampleRTT > 0);
 
-void cleanup(int socket, FILE *file) {
-    fclose(file);
-    close(socket);
-}
-
-void updateRTTAndTimeout(int sampleRttPtr, int *estimatedRttPtr, int *devRttPtr, int *timeoutPtr, float alpha, float beta) {
-    if(*estimatedRttPtr < 0) {
-        *estimatedRttPtr = sampleRttPtr;
-        *devRttPtr = sampleRttPtr / 2;
-        *timeoutPtr = *estimatedRttPtr + 4 * *devRttPtr;
+    if(*estimatedRTTPtr < 0) {
+        *estimatedRTTPtr = sampleRTT;
+        *devRTTPtr = sampleRTT / 2;
+        *timeoutPtr = *estimatedRTTPtr + 4 * *devRTTPtr;
         return;
     }
 
-    float newEstimatedRtt = (1 - alpha) * (float)*estimatedRttPtr + alpha * (float)sampleRttPtr;
-    float newDevRtt = (1 - beta) * (float)(*devRttPtr) + beta * (float)abs(sampleRttPtr - *estimatedRttPtr);
-    float newTimeout = newEstimatedRtt + 4 * newDevRtt;
+    float newEstimatedRTT = (1 - alpha) * (float)*estimatedRTTPtr + alpha * (float)sampleRTT;
+    float newDevRTT = (1 - beta) * (float)*devRTTPtr + beta * (float)abs(sampleRTT - *estimatedRTTPtr);
+    float newTimeout = newEstimatedRTT + 4 * newDevRTT;
 
-    *estimatedRttPtr = (int)newEstimatedRtt;
-    *devRttPtr = (int)newDevRtt;
+    *estimatedRTTPtr = (int)newEstimatedRTT;
+    *devRTTPtr = (int)newDevRTT;
     *timeoutPtr = (int)newTimeout;
+}
+
+int isSeqNumInRange(uint32_t seqNum, uint32_t baseSeqNum, uint32_t maxSeqNum) {
+    if(maxSeqNum > baseSeqNum) {
+        return baseSeqNum < seqNum && seqNum <= maxSeqNum;
+    }
+    return baseSeqNum < seqNum || seqNum <= maxSeqNum;
 }
 
 void runClient(FILE *file, char *udplAddress, int udplPort, int windowSize, int ackPort) {
     int clientSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if(clientSocket < 0) {
         perror("failed to create socket");
-        cleanup(clientSocket, file);
+        fclose(file);
         exit(1);
     }
 
@@ -68,7 +60,8 @@ void runClient(FILE *file, char *udplAddress, int udplPort, int windowSize, int 
     clientAddr.sin_port = htons(ackPort);
     if(bind(clientSocket, (struct sockaddr *)&clientAddr, sizeof(clientAddr)) < 0) {
         perror("failed to bind port");
-        cleanup(clientSocket, file);
+        close(clientSocket);
+        fclose(file);
         exit(1);
     }
 
@@ -78,117 +71,217 @@ void runClient(FILE *file, char *udplAddress, int udplPort, int windowSize, int 
     udplAddr.sin_addr.s_addr = inet_addr(udplAddress);
     udplAddr.sin_port = htons(udplPort);
 
-    DO_NOTHING_ON_ALARM
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = &doNothing;
+    sigaction(SIGALRM, &sa, NULL);
 
     struct TCPSegment segment;
     uint32_t seqNum = 0;
-    uint32_t serverACKNum;
-    int timeout = INITIAL_TIMEOUT * 1e6;
+    uint32_t nextExpectedServerSeq;
+    int timeout = (int)(INITIAL_TIMEOUT * 1e6);
     int isFirstTransmission;
-    int sampleRtt;
-    int estimatedRtt = -1;
-    int devRtt;
+    int timeRemaining;
+    int estimatedRTT = -1;
+    int devRTT;
     char serverMsg[BUFFER_SIZE];
     ssize_t serverMsgLen;
 
     segment = makeTCPSegment(ackPort, udplPort, seqNum++, 0, SYN_FLAG, NULL, 0);
 
-    printf("log: sending connection request\n");
+    fprintf(stderr, "log: sending SYN\n");
     isFirstTransmission = 1;
     for(;;) {
-        if(sendto(clientSocket, &segment, segment.length, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != HEADER_LEN) {
+        if(sendto(clientSocket, &segment, segment.length, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != segment.length) {
             perror("failed to send to socket");
-            cleanup(clientSocket, file);
+            close(clientSocket);
+            fclose(file);
             exit(1);
         }
 
         errno = 0;
         ualarm(timeout, 0);
         serverMsgLen = recvfrom(clientSocket, serverMsg, BUFFER_SIZE, 0, NULL, NULL);
-        sampleRtt = (int)(timeout - ualarm(0, 0));
+        timeRemaining = (int)ualarm(0, 0);
         if(errno == EINTR) {
-            printf("warning: failed to receive SYNACK\n");
+            fprintf(stderr, "warning: failed to receive SYNACK\n");
             isFirstTransmission = 0;
             timeout *= 2;
             continue;
         }
         if(serverMsgLen < 0) {
             perror("failed to read from socket");
-            cleanup(clientSocket, file);
+            close(clientSocket);
+            fclose(file);
             exit(1);
         }
         segment = parseTCPSegment(serverMsg);
-        if(isFirstTransmission) {
-            updateRTTAndTimeout(sampleRtt, &estimatedRtt, &devRtt, &timeout, ALPHA, BETA);
-        }
-        if(doesChecksumAgree(segment.header) && segment.header.ackNum == seqNum && isFlagSet(segment.header, SYN_FLAG) && isFlagSet(segment.header, ACK_FLAG)) {
+        if(isChecksumValid(segment.header) && segment.header.ackNum == segment.expectedACKNum && isFlagSet(segment.header, SYN_FLAG) && isFlagSet(segment.header, ACK_FLAG)) {
+            if(isFirstTransmission) {
+                updateRTTAndTimeout(timeout - timeRemaining, &estimatedRTT, &devRTT, &timeout, ALPHA, BETA);
+            }
             break;
         }
     }
 
-    serverACKNum = segment.header.seqNum + 1;
+    nextExpectedServerSeq = segment.header.seqNum + 1;
 
     int windowCapacity = windowSize / MSS;
-    int windowLength = 0;
-    struct Node *head;
+    struct LinkedList *window = newLinkedList(windowCapacity);
+    if(!window) {
+        perror("failed to malloc\n");
+        close(clientSocket);
+        fclose(file);
+        exit(1);
+    }
+    uint32_t baseSeqNum;
     char fileBuffer[BUFFER_SIZE];
     size_t fileBufferLen;
 
     // TODO: seqNum += MSS
-
-    segment = makeTCPSegment(ackPort, udplPort, seqNum++, serverACKNum, ACK_FLAG, NULL, 0);
-    head = newNode(segment, NULL);
-    windowLength++;
-
-    printf("log: received SYNACK, sending ACK and file\n");
-    // isFirstTransmission = 1;
-    while((fileBufferLen = fread(fileBuffer, 1, BUFFER_SIZE, file)) > 0) {
-
-    }
-    if(ferror(file)) {
-        perror("failed to read file");
-        cleanup(clientSocket, file);
+    // TODO: does server seqNum matter?
+    fprintf(stderr, "log: received SYNACK, sending ACK\n");
+    baseSeqNum = seqNum;
+    segment = makeTCPSegment(ackPort, udplPort, seqNum++, nextExpectedServerSeq, ACK_FLAG, NULL, 0);
+    offer(window, segment);
+    if(sendto(clientSocket, &segment, segment.length, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != segment.length) {
+        perror("failed to send to socket");
+        close(clientSocket);
+        fclose(file);
+        freeLinkedList(window);
         exit(1);
     }
 
-    cleanup(clientSocket, file);
+    fprintf(stderr, "log: sending file\n");
+    while(!isFull(window) && (fileBufferLen = fread(fileBuffer, 1, BUFFER_SIZE, file)) > 0) {
+        segment = makeTCPSegment(ackPort, udplPort, seqNum, nextExpectedServerSeq, 0, fileBuffer, (int)fileBufferLen);
+        offer(window, segment);
+        seqNum += fileBufferLen;
+
+        if(sendto(clientSocket, &segment, segment.length, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != segment.length) {
+            perror("failed to send to socket");
+            close(clientSocket);
+            fclose(file);
+            freeLinkedList(window);
+            exit(1);
+        }
+    }
+    if(!fileBufferLen && ferror(file)) {
+        perror("failed to read file");
+        close(clientSocket);
+        fclose(file);
+        freeLinkedList(window);
+        exit(1);
+    }
+
+    int remainingTimeout = timeout;
+    isFirstTransmission = 1;
+    while(!isEmpty(window)) {
+        errno = 0;
+        ualarm(remainingTimeout, 0);
+        serverMsgLen = recvfrom(clientSocket, serverMsg, BUFFER_SIZE, 0, NULL, NULL);
+        // sampleRtt = (int)(timeout - ualarm(0, 0));
+        timeRemaining = (int)ualarm(0, 0);
+        if(errno == EINTR) {
+            fprintf(stderr, "warning: failed to receive ACK for seq %d\n", baseSeqNum);
+            isFirstTransmission = 0;
+            timeout *= 2;
+            remainingTimeout = timeout;
+            continue;
+        }
+        if(serverMsgLen < 0) {
+            perror("failed to read from socket");
+            close(clientSocket);
+            fclose(file);
+            freeLinkedList(window);
+            exit(1);
+        }
+        segment = parseTCPSegment(serverMsg);
+        if(isChecksumValid(segment.header) && isFlagSet(segment.header, ACK_FLAG) && isSeqNumInRange(segment.header.ackNum, baseSeqNum, seqNum)) {
+            if(isFirstTransmission) {
+                updateRTTAndTimeout(remainingTimeout - timeRemaining, &estimatedRTT, &devRTT, &timeout, ALPHA, BETA);
+            }
+
+            struct TCPSegment polledSegment;
+            do {
+                polledSegment = poll(window);
+            } while(polledSegment.expectedACKNum != segment.header.ackNum);
+            baseSeqNum = segment.header.ackNum;
+
+            while(!isFull(window) && (fileBufferLen = fread(fileBuffer, 1, BUFFER_SIZE, file)) > 0) {
+                segment = makeTCPSegment(ackPort, udplPort, seqNum, nextExpectedServerSeq, 0, fileBuffer, (int)fileBufferLen);
+                offer(window, segment);
+                seqNum += fileBufferLen;
+
+                if(sendto(clientSocket, &segment, segment.length, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != segment.length) {
+                    perror("failed to send to socket");
+                    close(clientSocket);
+                    fclose(file);
+                    freeLinkedList(window);
+                    exit(1);
+                }
+            }
+            if(!fileBufferLen && ferror(file)) {
+                perror("failed to read file");
+                close(clientSocket);
+                fclose(file);
+                freeLinkedList(window);
+                exit(1);
+            }
+
+            remainingTimeout = timeout;
+            isFirstTransmission = 1;
+        }
+        else {
+            remainingTimeout = timeRemaining;
+        }
+    }
+
+    // TODO
+    segment = makeTCPSegment(ackPort, udplPort, seqNum++, nextExpectedServerSeq, FIN_FLAG, NULL, 0);
+    assert(sendto(clientSocket, &segment, segment.length, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) == segment.length);
+
+    close(clientSocket);
+    fclose(file);
+
 }
 
 int main(int argc, char **argv) {
     if(argc != 6) {
-        fprintf(stderr, "usage: tcpclient <file> <address of udpl> <port of udpl> <window size> <ack port>");
+        fprintf(stderr, "usage: tcpclient <file> <address of udpl> <port of udpl> <window size> <ack port>\n");
         exit(1);
     }
 
-    char *fileStr = argv[1];
-    FILE *file = fopen(fileStr, "r");
-    if(!file) {
-        fprintf(stderr, "error: unable to read file");
-        exit(1);
-    }
     char *udplAddress = argv[2];
     if(!isValidIP(udplAddress)) {
-        fprintf(stderr, "error: invalid udpl address");
+        fprintf(stderr, "error: invalid udpl address\n");
         exit(1);
     }
     int udplPort = getPort(argv[3]);
     if(!udplPort) {
-        fprintf(stderr, "error: invalid udpl port");
+        fprintf(stderr, "error: invalid udpl port\n");
         exit(1);
     }
     char *windowSizeStr = argv[4];
     if(!isNumber(windowSizeStr)) {
-        fprintf(stderr, "error: invalid window size");
+        fprintf(stderr, "error: invalid window size\n");
         exit(1);
     }
     int windowSize = (int)strtol(windowSizeStr, NULL, 10);
     if(windowSize / MSS < 2) {
-        fprintf(stderr, "error: window size too small");
+        fprintf(stderr, "error: window size too small\n");
         exit(1);
     }
     int ackPort = getPort(argv[5]);
     if(!ackPort) {
-        fprintf(stderr, "error: invalid ack port");
+        fprintf(stderr, "error: invalid ack port\n");
+        exit(1);
+    }
+
+    char *fileStr = argv[1];
+    FILE *file = fopen(fileStr, "rb");
+    if(!file) {
+        fprintf(stderr, "error: unable to read from file\n");
         exit(1);
     }
 
