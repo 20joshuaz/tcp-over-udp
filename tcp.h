@@ -26,15 +26,13 @@ struct TCPSegment {
     struct TCPHeader header;
     char data[MSS];
 
-    int length;
-    uint32_t expectedACKNum;
+    int dataLen;
 };
 
 uint16_t calculateSumOfHeaderWords(struct TCPHeader header);
 int isFlagSet(struct TCPHeader header, uint8_t flag);
 struct TCPSegment makeTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_t seqNum, uint32_t ackNum,
                                  uint8_t flags, char *data, int dataLen);
-struct TCPSegment parseTCPSegment(const char *rawSegment);
 int isChecksumValid(struct TCPHeader header);
 void printTCPHeader(struct TCPHeader header);
 

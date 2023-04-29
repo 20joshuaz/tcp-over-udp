@@ -52,7 +52,7 @@ uint16_t calculateSumOfHeaderWords(struct TCPHeader header) {
 }
 
 int isFlagSet(struct TCPHeader header, uint8_t flag) {
-    return (header.flags & flag) != 0;
+    return (header.flags & flag) == flag;
 }
 
 struct TCPSegment makeTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_t seqNum, uint32_t ackNum,
@@ -75,8 +75,9 @@ struct TCPSegment makeTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_
     struct TCPSegment segment;
     segment.header = header;
     memcpy(segment.data, data, dataLen);
+    segment.dataLen = dataLen;
 
-    segment.length = HEADER_LEN + dataLen;
+    /* segment.length = HEADER_LEN + dataLen;
 
     segment.expectedACKNum = seqNum;
     if(isFlagSet(header, SYN_FLAG) || isFlagSet(header, FIN_FLAG)) {
@@ -84,7 +85,7 @@ struct TCPSegment makeTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_
     }
     else if(!isFlagSet(header, ACK_FLAG)) {
         segment.expectedACKNum += dataLen;
-    }
+    } */
 
     return segment;
 }

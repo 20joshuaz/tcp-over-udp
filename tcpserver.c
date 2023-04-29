@@ -11,7 +11,7 @@
 #include "tcp.h"
 #include "validators.h"
 
-#define BUFFER_SIZE 1000
+#define ISN 0
 #define INITIAL_TIMEOUT 1
 #define ALPHA 0.125
 #define BETA 0.25
@@ -47,38 +47,39 @@ void runServer(FILE *file, int listenPort, char *ackAddress, int ackPort) {
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = &doNothing;
-    sigaction(SIGALRM, &sa, NULL);
+    if(sigaction(SIGALRM, &sa, NULL) != 0) {
+        perror("failed to set sigaction");
+        close(serverSocket);
+        fclose(file);
+        exit(1);
+    }
 
-    struct TCPSegment segment;
-    uint32_t seqNum = 0;
+    struct TCPSegment serverSegment, clientSegment;
+    ssize_t clientSegmentLen;
     uint32_t nextExpectedClientSeq;
     int timeout = (int)(INITIAL_TIMEOUT * 1e6);
-    char clientMsg[BUFFER_SIZE];
-    int clientMsgLen;
 
     fprintf(stderr, "log: listening for SYN\n");
     for(;;) {
-        clientMsgLen = (int)recvfrom(serverSocket, clientMsg, BUFFER_SIZE, 0, NULL, NULL);
-        if(clientMsgLen < 0) {
+        clientSegmentLen = recvfrom(serverSocket, &clientSegment, sizeof(clientSegment), 0, NULL, NULL);
+        if(clientSegmentLen < 0) {
             perror("failed to read from socket");
             close(serverSocket);
             fclose(file);
             exit(1);
         }
-        assert(clientMsgLen == HEADER_LEN);
-        segment = parseTCPSegment(clientMsg);
-        if(isChecksumValid(segment.header) && isFlagSet(segment.header, SYN_FLAG)) {
+        if(isChecksumValid(clientSegment.header)) {
+            assert(isFlagSet(clientSegment.header, SYN_FLAG));
             break;
         }
     }
 
-    nextExpectedClientSeq = segment.header.seqNum + 1;
-    segment = makeTCPSegment(listenPort, ackPort, seqNum++, nextExpectedClientSeq, SYN_FLAG | ACK_FLAG, NULL, 0);
-    printTCPHeader(segment.header);
+    nextExpectedClientSeq = clientSegment.header.seqNum + 1;
+    serverSegment = makeTCPSegment(listenPort, ackPort, ISN, nextExpectedClientSeq, SYN_FLAG | ACK_FLAG, NULL, 0);
 
     fprintf(stderr, "log: received SYN, sending SYNACK\n");
     for(;;) {
-        if(sendto(serverSocket, &segment, segment.length, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != segment.length) {
+        if(sendto(serverSocket, &serverSegment, HEADER_LEN, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != HEADER_LEN) {
             perror("failed to send to socket");
             close(serverSocket);
             fclose(file);
@@ -87,23 +88,21 @@ void runServer(FILE *file, int listenPort, char *ackAddress, int ackPort) {
 
         errno = 0;
         ualarm(timeout, 0);
-        clientMsgLen = (int)recvfrom(serverSocket, clientMsg, BUFFER_SIZE, 0, NULL, NULL);
+        clientSegmentLen = recvfrom(serverSocket, &clientSegment, sizeof(clientSegment), 0, NULL, NULL);
         ualarm(0, 0);
         if(errno == EINTR) {
             fprintf(stderr, "warning: failed to receive ACK\n");
             timeout *= 2;
             continue;
         }
-        if(clientMsgLen < 0) {
+        if(clientSegmentLen < 0) {
             perror("failed to read from socket");
             close(serverSocket);
             fclose(file);
             exit(1);
         }
-        assert(clientMsgLen == HEADER_LEN);
-        struct TCPSegment recvSegment = parseTCPSegment(clientMsg);
-        printTCPHeader(recvSegment.header);
-        if(isChecksumValid(recvSegment.header) && recvSegment.header.ackNum == segment.expectedACKNum && isFlagSet(recvSegment.header, ACK_FLAG)) {
+        if(isChecksumValid(clientSegment.header)) {
+            assert(clientSegment.header.ackNum == nextExpectedClientSeq && isFlagSet(clientSegment.header, ACK_FLAG));
             break;
         }
     }
@@ -111,31 +110,33 @@ void runServer(FILE *file, int listenPort, char *ackAddress, int ackPort) {
     nextExpectedClientSeq++;
 
     fprintf(stderr, "log: receiving file\n");
+    ssize_t clientDataLen;
     for(;;) {
-        if((clientMsgLen = (int)recvfrom(serverSocket, clientMsg, BUFFER_SIZE, 0, NULL, NULL)) < 0) {
+        if((clientSegmentLen = recvfrom(serverSocket, &clientSegment, sizeof(clientSegment), 0, NULL, NULL)) < 0) {
             perror("failed to read from socket");
             close(serverSocket);
             fclose(file);
             exit(1);
         }
-        assert(clientMsgLen >= HEADER_LEN);
-        segment = parseTCPSegment(clientMsg);
-        if(isChecksumValid(segment.header) && segment.header.seqNum == nextExpectedClientSeq) {
-            if(isFlagSet(segment.header, FIN_FLAG)) {
+        if(isChecksumValid(clientSegment.header)) {
+            if(isFlagSet(clientSegment.header, FIN_FLAG)) {
                 break;
             }
-            int clientDataLen = clientMsgLen - HEADER_LEN;
-            size_t fileWriteLen = fwrite(segment.data, 1, clientDataLen, file);
-            if(!fileWriteLen && ferror(file)) {
-                perror("failed to write to file");
-                close(serverSocket);
-                fclose(file);
-                exit(1);
+
+            if(clientSegment.header.seqNum == nextExpectedClientSeq) {
+                clientDataLen = clientSegmentLen - HEADER_LEN;
+                if(!fwrite(clientSegment.data, 1, clientDataLen, file) && ferror(file)) {
+                    perror("failed to write to file");
+                    close(serverSocket);
+                    fclose(file);
+                    exit(1);
+                }
+
+                nextExpectedClientSeq += clientDataLen;
             }
 
-            nextExpectedClientSeq += clientDataLen;
-            segment = makeTCPSegment(listenPort, ackPort, seqNum, nextExpectedClientSeq, ACK_FLAG, NULL, 0);
-            if(sendto(serverSocket, &segment, segment.length, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != segment.length) {
+            serverSegment = makeTCPSegment(listenPort, ackPort, ISN + 1, nextExpectedClientSeq, ACK_FLAG, NULL, 0);
+            if(sendto(serverSocket, &serverSegment, HEADER_LEN, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != HEADER_LEN) {
                 perror("failed to send to socket");
                 close(serverSocket);
                 fclose(file);
