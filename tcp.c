@@ -1,14 +1,7 @@
-#include <ctype.h>
-// #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
-#include "helpers.h"
-
-void doNothing(int signum) {
-
-}
+#include "tcp.h"
 
 int getNthBit(int num, int n) {
     return num >> n & 1;
@@ -58,8 +51,12 @@ uint16_t calculateSumOfHeaderWords(struct TCPHeader header) {
     return sum;
 }
 
+int isFlagSet(struct TCPHeader header, uint8_t flag) {
+    return (header.flags & flag) != 0;
+}
+
 struct TCPSegment makeTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_t seqNum, uint32_t ackNum,
-        uint8_t flags, char *data, int dataLen) {
+                                 uint8_t flags, char *data, int dataLen) {
     struct TCPHeader header;
 
     header.sourcePort = sourcePort;
@@ -78,7 +75,16 @@ struct TCPSegment makeTCPSegment(uint16_t sourcePort, uint16_t destPort, uint32_
     struct TCPSegment segment;
     segment.header = header;
     memcpy(segment.data, data, dataLen);
+
     segment.length = HEADER_LEN + dataLen;
+
+    segment.expectedACKNum = seqNum;
+    if(isFlagSet(header, SYN_FLAG) || isFlagSet(header, FIN_FLAG)) {
+        segment.expectedACKNum++;
+    }
+    else if(!isFlagSet(header, ACK_FLAG)) {
+        segment.expectedACKNum += dataLen;
+    }
 
     return segment;
 }
@@ -87,11 +93,8 @@ struct TCPSegment parseTCPSegment(const char *rawSegment) {
     return *(struct TCPSegment *)rawSegment;
 }
 
-int isFlagSet(struct TCPHeader header, uint8_t flag) {
-    return (header.flags & flag) != 0;
-}
 
-int doesChecksumAgree(struct TCPHeader header) {
+int isChecksumValid(struct TCPHeader header) {
     uint16_t totalSum = calculateSumOfHeaderWords(header);
     for(int i = 0; i < 16; i++) {
         if(!getNthBit(totalSum, i)) {
@@ -102,61 +105,15 @@ int doesChecksumAgree(struct TCPHeader header) {
 }
 
 void printTCPHeader(struct TCPHeader header) {
-    printf("{\n");
-    printf("\tsourcePort=%d\n", header.sourcePort);
-    printf("\tdestPort=%d\n", header.destPort);
-    printf("\tseqNum=%d\n", header.seqNum);
-    printf("\tackNum=%d\n", header.ackNum);
-    printf("\tlength=%d\n", header.length);
-    printf("\tflags=%x\n", header.flags);
-    printf("\trecvWindow=%d\n", header.recvWindow);
-    printf("\tchecksum=%x\n", header.checksum);
-    printf("\turgentPtr=%d\n", header.urgentPtr);
-    printf("}\n");
-}
-
-int isNumber(char *s) {
-    for(char *trav = s; *trav; trav++) {
-        if(!isdigit(*trav)) {
-            return 0;
-        }
-    }
-    return *s != 0;  // returns false for empty string
-}
-
-int getPort(char *portStr) {
-    if(!isNumber(portStr)) {
-        return 0;
-    }
-    int port = (int)strtol(portStr, NULL, 10);
-    return (port >= 1024 && port <= 65535) * port;
-}
-
-int isValidIP(char *ip) {
-    char *trav = ip;
-    int numDots = 0;
-    char curr;
-    while((curr = *trav++)) {
-        numDots += (curr == '.');
-    }
-    if(numDots != 3) {
-        return 0;
-    }
-
-    char ipCopy[strlen(ip) + 1];
-    strcpy(ipCopy, ip);
-
-    char delim[] = ".";
-    char *token = strtok(ipCopy, delim);
-    while(token) {
-        if(!isNumber(token)) {
-            return 0;
-        }
-        int part = (int)strtol(token, NULL, 10);
-        if(!(part >= 0 && part <= 255)) {
-            return 0;
-        }
-        token = strtok(NULL, delim);
-    }
-    return 1;
+    fprintf(stderr, "{\n");
+    fprintf(stderr, "\tsourcePort: %d\n", header.sourcePort);
+    fprintf(stderr, "\tdestPort: %d\n", header.destPort);
+    fprintf(stderr, "\tseqNum: %d\n", header.seqNum);
+    fprintf(stderr, "\tackNum: %d\n", header.ackNum);
+    fprintf(stderr, "\tlength: %d\n", header.length);
+    fprintf(stderr, "\tflags: %x\n", header.flags);
+    fprintf(stderr, "\trecvWindow: %d\n", header.recvWindow);
+    fprintf(stderr, "\tchecksum: %x\n", header.checksum);
+    fprintf(stderr, "\turgentPtr: %d\n", header.urgentPtr);
+    fprintf(stderr, "}\n");
 }

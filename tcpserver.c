@@ -8,17 +8,21 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "helpers.h"
+#include "tcp.h"
+#include "validators.h"
 
 #define BUFFER_SIZE 1000
 #define INITIAL_TIMEOUT 1
 #define ALPHA 0.125
 #define BETA 0.25
 
-void runServer(char *file, int listenPort, char *ackAddress, int ackPort) {
+void doNothing(__attribute__((unused)) int signum) {}
+
+void runServer(FILE *file, int listenPort, char *ackAddress, int ackPort) {
     int serverSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if(serverSocket < 0) {
         perror("failed to create socket");
+        fclose(file);
         exit(1);
     }
 
@@ -29,6 +33,8 @@ void runServer(char *file, int listenPort, char *ackAddress, int ackPort) {
     serverAddr.sin_port = htons(listenPort);
     if(bind(serverSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
         perror("failed to bind port");
+        close(serverSocket);
+        fclose(file);
         exit(1);
     }
 
@@ -38,36 +44,44 @@ void runServer(char *file, int listenPort, char *ackAddress, int ackPort) {
     ackAddr.sin_addr.s_addr = inet_addr(ackAddress);
     ackAddr.sin_port = htons(ackPort);
 
-    DO_NOTHING_ON_ALARM
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = &doNothing;
+    sigaction(SIGALRM, &sa, NULL);
 
     struct TCPSegment segment;
     uint32_t seqNum = 0;
-    uint32_t clientACKNum;
-    int timeout = INITIAL_TIMEOUT * 1e6;
+    uint32_t nextExpectedClientSeq;
+    int timeout = (int)(INITIAL_TIMEOUT * 1e6);
     char clientMsg[BUFFER_SIZE];
     int clientMsgLen;
 
-    printf("log: listening for connection requests\n");
+    fprintf(stderr, "log: listening for SYN\n");
     for(;;) {
         clientMsgLen = (int)recvfrom(serverSocket, clientMsg, BUFFER_SIZE, 0, NULL, NULL);
         if(clientMsgLen < 0) {
             perror("failed to read from socket");
+            close(serverSocket);
+            fclose(file);
             exit(1);
         }
         assert(clientMsgLen == HEADER_LEN);
         segment = parseTCPSegment(clientMsg);
-        if(doesChecksumAgree(segment.header) && isFlagSet(segment.header, SYN_FLAG)) {
+        if(isChecksumValid(segment.header) && isFlagSet(segment.header, SYN_FLAG)) {
             break;
         }
     }
 
-    clientACKNum = (int)segment.header.seqNum + 1;
-    segment = makeTCPSegment(listenPort, ackPort, seqNum++, clientACKNum, SYN_FLAG | ACK_FLAG, NULL, 0);
+    nextExpectedClientSeq = segment.header.seqNum + 1;
+    segment = makeTCPSegment(listenPort, ackPort, seqNum++, nextExpectedClientSeq, SYN_FLAG | ACK_FLAG, NULL, 0);
+    printTCPHeader(segment.header);
 
-    printf("log: received connection request, sending SYNACK\n");
+    fprintf(stderr, "log: received SYN, sending SYNACK\n");
     for(;;) {
-        if(sendto(serverSocket, &segment, segment.length, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != HEADER_LEN) {
+        if(sendto(serverSocket, &segment, segment.length, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != segment.length) {
             perror("failed to send to socket");
+            close(serverSocket);
+            fclose(file);
             exit(1);
         }
 
@@ -76,44 +90,90 @@ void runServer(char *file, int listenPort, char *ackAddress, int ackPort) {
         clientMsgLen = (int)recvfrom(serverSocket, clientMsg, BUFFER_SIZE, 0, NULL, NULL);
         ualarm(0, 0);
         if(errno == EINTR) {
-            printf("warning: failed to receive ACK\n");
+            fprintf(stderr, "warning: failed to receive ACK\n");
             timeout *= 2;
             continue;
         }
         if(clientMsgLen < 0) {
             perror("failed to read from socket");
+            close(serverSocket);
+            fclose(file);
             exit(1);
         }
-        segment = parseTCPSegment(clientMsg);
-        if(doesChecksumAgree(segment.header) && segment.header.ackNum == seqNum && isFlagSet(segment.header, ACK_FLAG)) {
+        assert(clientMsgLen == HEADER_LEN);
+        struct TCPSegment recvSegment = parseTCPSegment(clientMsg);
+        printTCPHeader(recvSegment.header);
+        if(isChecksumValid(recvSegment.header) && recvSegment.header.ackNum == segment.expectedACKNum && isFlagSet(recvSegment.header, ACK_FLAG)) {
             break;
         }
     }
 
-    printf("Success\n");
+    nextExpectedClientSeq++;
+
+    fprintf(stderr, "log: receiving file\n");
+    for(;;) {
+        if((clientMsgLen = (int)recvfrom(serverSocket, clientMsg, BUFFER_SIZE, 0, NULL, NULL)) < 0) {
+            perror("failed to read from socket");
+            close(serverSocket);
+            fclose(file);
+            exit(1);
+        }
+        assert(clientMsgLen >= HEADER_LEN);
+        segment = parseTCPSegment(clientMsg);
+        if(isChecksumValid(segment.header) && segment.header.seqNum == nextExpectedClientSeq) {
+            if(isFlagSet(segment.header, FIN_FLAG)) {
+                break;
+            }
+            int clientDataLen = clientMsgLen - HEADER_LEN;
+            size_t fileWriteLen = fwrite(segment.data, 1, clientDataLen, file);
+            if(!fileWriteLen && ferror(file)) {
+                perror("failed to write to file");
+                close(serverSocket);
+                fclose(file);
+                exit(1);
+            }
+
+            nextExpectedClientSeq += clientDataLen;
+            segment = makeTCPSegment(listenPort, ackPort, seqNum, nextExpectedClientSeq, ACK_FLAG, NULL, 0);
+            if(sendto(serverSocket, &segment, segment.length, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != segment.length) {
+                perror("failed to send to socket");
+                close(serverSocket);
+                fclose(file);
+                exit(1);
+            }
+        }
+    }
+
     close(serverSocket);
+    fclose(file);
 }
 
 int main(int argc, char **argv) {
     if(argc != 5) {
-        fprintf(stderr, "usage: tcpserver <file> <listening port> <ack address> <ack port>");
+        fprintf(stderr, "usage: tcpserver <file> <listening port> <ack address> <ack port>\n");
         exit(1);
     }
 
-    char *file = argv[1];
     int listenPort = getPort(argv[2]);
     if(!listenPort) {
-        fprintf(stderr, "error: invalid listening port");
+        fprintf(stderr, "error: invalid listening port\n");
         exit(1);
     }
     char *ackAddress = argv[3];
     if(!isValidIP(ackAddress)) {
-        fprintf(stderr, "error: invalid ack address");
+        fprintf(stderr, "error: invalid ack address\n");
         exit(1);
     }
     int ackPort = getPort(argv[4]);
     if(!ackPort) {
-        fprintf(stderr, "error: invalid ack port");
+        fprintf(stderr, "error: invalid ack port\n");
+        exit(1);
+    }
+
+    char *fileStr = argv[1];
+    FILE *file = fopen(fileStr, "wb");
+    if(!file) {
+        fprintf(stderr, "error: unable to write to file\n");
         exit(1);
     }
 
