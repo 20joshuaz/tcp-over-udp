@@ -125,7 +125,7 @@ void runServer(FILE *file, int listenPort, char *ackAddress, int ackPort) {
 
             if(clientSegment.header.seqNum == nextExpectedClientSeq) {
                 clientDataLen = clientSegmentLen - HEADER_LEN;
-                if(!fwrite(clientSegment.data, 1, clientDataLen, file) && ferror(file)) {
+                if(fwrite(clientSegment.data, 1, clientDataLen, file) != clientDataLen) {
                     perror("failed to write to file");
                     close(serverSocket);
                     fclose(file);

@@ -135,7 +135,7 @@ void runClient(FILE *file, char *udplAddress, int udplPort, int windowSize, int 
 
     uint32_t seqNum = ISN + 2;
     clock_t startTime;
-    uint32_t seqNumBeingTimed;
+    uint32_t ackNumBeingTimed;
     isSampleRTTBeingMeasured = 0;
 
     int windowCapacity = windowSize / MSS;
@@ -155,15 +155,16 @@ void runClient(FILE *file, char *udplAddress, int udplPort, int windowSize, int 
     int remainingTimeout = timeout;
     do {
         while(!isFull(window) && (fileBufferLen = fread(fileBuffer, 1, MSS, file)) > 0) {
-            if(!isSampleRTTBeingMeasured) {
-                isSampleRTTBeingMeasured = 1;
-                seqNumBeingTimed = seqNum;
-                startTime = clock();
-            }
             fileSegment = makeTCPSegment(ackPort, udplPort, seqNum, nextExpectedServerSeq, 0, fileBuffer, (int)fileBufferLen);
             fileSegmentLen = HEADER_LEN + fileSegment.dataLen;
+            seqNum += fileSegment.dataLen;
             offer(window, fileSegment);
-            seqNum += fileBufferLen;
+
+            if(!isSampleRTTBeingMeasured) {
+                isSampleRTTBeingMeasured = 1;
+                ackNumBeingTimed = seqNum;
+                startTime = clock();
+            }
 
             if(sendto(clientSocket, &fileSegment, fileSegmentLen, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != fileSegmentLen) {
                 perror("failed to send to socket");
@@ -200,7 +201,7 @@ void runClient(FILE *file, char *udplAddress, int udplPort, int windowSize, int 
                 freeWindow(window);
                 exit(1);
             }
-            if(fileSegment.header.seqNum == seqNumBeingTimed) {
+            if(fileSegment.header.seqNum + fileSegment.dataLen == ackNumBeingTimed) {
                 isSampleRTTBeingMeasured = 0;
             }
             continue;
@@ -216,12 +217,12 @@ void runClient(FILE *file, char *udplAddress, int udplPort, int windowSize, int 
         int resumeTimer = 1;
         if(isChecksumValid(serverSegment.header)) {
             uint32_t serverACKNum = serverSegment.header.ackNum;
-            if(isSeqNumInRange(window, serverACKNum, 1)) {
+            if(isACKNumInRange(window, serverACKNum)) {
                 assert(isFlagSet(serverSegment.header, ACK_FLAG));
                 for( ; !isEmpty(window) && window->arr[window->startIndex].header.seqNum != serverACKNum; deleteHead(window));
                 // isEmpty(window) || window->arr[window->startIndex].header.seqNum == serverACKNum
 
-                if(isSampleRTTBeingMeasured && !isSeqNumInRange(window, seqNumBeingTimed, 0)) {
+                if(isSampleRTTBeingMeasured && !isACKNumInRange(window, ackNumBeingTimed)) {
                     updateRTTAndTimeout((int)((clock() - startTime) / CLOCKS_PER_SEC * SI_MICRO), &estimatedRTT, &devRTT, &timeout, ALPHA, BETA);
                 }
 
