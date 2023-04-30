@@ -10,7 +10,7 @@ tcpserver: validators.a tcp.a
 
 tcpserver.o:
 
-tcpclient: validators.a tcp.a linkedlist.a
+tcpclient: validators.a tcp.a window.a
 
 tcpclient.o:
 
@@ -24,10 +24,10 @@ tcp.a: tcp.o
 
 tcp.o:
 
-linkedlist.a: linkedlist.o
-	ar rcs linkedlist.a linkedlist.o
+window.a: window.o
+	ar rcs window.a window.o
 
-linkedlist.o:
+window.o:
 
 .PHONY: clean
 clean:
