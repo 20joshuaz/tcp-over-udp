@@ -134,6 +134,9 @@ void runServer(FILE *file, int listenPort, char *ackAddress, int ackPort) {
 
                 nextExpectedClientSeq += clientDataLen;
             }
+            else {
+                fprintf(stderr, "warning: received out-of-order seq %d\n", clientSegment.header.seqNum);
+            }
 
             serverSegment = makeTCPSegment(listenPort, ackPort, ISN + 1, nextExpectedClientSeq, ACK_FLAG, NULL, 0);
             if(sendto(serverSocket, &serverSegment, HEADER_LEN, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != HEADER_LEN) {

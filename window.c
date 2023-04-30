@@ -56,29 +56,21 @@ void deleteHead(struct Window *window) {
     window->length--;
 }
 
-void getSeqRange(struct Window *window, uint32_t *startSeqPtr, uint32_t *endSeqPtr) {
+void getSeqRange(struct Window *window, uint32_t *startSeqPtr, uint32_t *endSeqPtr, int includeDataLen) {
+    assert(!isEmpty(window));
     struct TCPSegment startSegment, endSegment;
     startSegment = window->arr[window->startIndex];
     endSegment = window->arr[window->endIndex];
-    *startSeqPtr = startSegment.header.seqNum + startSegment.dataLen;
-    *endSeqPtr = endSegment.header.seqNum + endSegment.dataLen;
+    *startSeqPtr = startSegment.header.seqNum + includeDataLen * startSegment.dataLen;
+    *endSeqPtr = endSegment.header.seqNum + includeDataLen * endSegment.dataLen;
 }
 
-int isSeqNumInRange(struct Window *window, uint32_t seqNum) {
+int isSeqNumInRange(struct Window *window, uint32_t seqNum, int includeDataLen) {
     assert(!isEmpty(window));
     uint32_t startSeq, endSeq;
-    getSeqRange(window, &startSeq, &endSeq);
+    getSeqRange(window, &startSeq, &endSeq, includeDataLen);
     if(endSeq > startSeq) {
         return startSeq <= seqNum && seqNum <= endSeq;
     }
     return startSeq <= seqNum || seqNum <= endSeq;
-}
-
-int moveWindowToSeqNum(struct Window *window, uint32_t seqNum) {
-    if(!isSeqNumInRange(window, seqNum)) {
-        return 0;
-    }
-    for( ; !isEmpty(window) && window->arr[window->startIndex].header.seqNum != seqNum; deleteHead(window));
-    return 1;
-    // isEmpty(window) || window->arr[window->startIndex].header.seqNum == seqNum
 }
