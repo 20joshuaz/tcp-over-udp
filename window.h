@@ -15,7 +15,7 @@ struct Window *newWindow(int capacity);
 void freeWindow(struct Window *window);
 int isEmpty(struct Window *window);
 int isFull(struct Window *window);
-void offer(struct Window *window, struct TCPSegment segment);
+void offer(struct Window *window, struct TCPSegment *segment);
 void deleteHead(struct Window *window);
 int isACKNumInRange(struct Window *window, uint32_t seqNum);
 

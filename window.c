@@ -1,6 +1,6 @@
 #include <assert.h>
 #include <stdlib.h>
-#include <sys/socket.h>
+#include <string.h>
 
 #include "window.h"
 
@@ -43,10 +43,10 @@ int incrementIndexWithWraparound(int index, int maxIndex) {
     return index;
 }
 
-void offer(struct Window *window, struct TCPSegment segment) {
+void offer(struct Window *window, struct TCPSegment *segment) {
     assert(!isFull(window));
     window->endIndex = incrementIndexWithWraparound(window->endIndex, window->capacity);
-    window->arr[window->endIndex] = segment;
+    memcpy(window->arr + window->endIndex, segment, sizeof(struct TCPSegment));
     window->length++;
 }
 
@@ -58,11 +58,10 @@ void deleteHead(struct Window *window) {
 
 void getACKRange(struct Window *window, uint32_t *startACKPtr, uint32_t *endACKPtr) {
     assert(!isEmpty(window));
-    struct TCPSegment startSegment, endSegment;
-    startSegment = window->arr[window->startIndex];
-    endSegment = window->arr[window->endIndex];
-    *startACKPtr = startSegment.header.seqNum + startSegment.dataLen;
-    *endACKPtr = endSegment.header.seqNum + endSegment.dataLen;
+    struct TCPSegment *startSegment = window->arr + window->startIndex;
+    struct TCPSegment *endSegment = window->arr + window->endIndex;
+    *startACKPtr = startSegment->seqNum + startSegment->dataLen;
+    *endACKPtr = endSegment->seqNum + endSegment->dataLen;
 }
 
 int isACKNumInRange(struct Window *window, uint32_t ackNum) {
