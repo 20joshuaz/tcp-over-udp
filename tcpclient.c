@@ -103,7 +103,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         ualarm(timeout, 0);
         serverSegmentLen = recvfrom(clientSocket, serverSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
         timeRemaining = (int)ualarm(0, 0);
-        if(errno == EINTR) {
+        if(!timeRemaining || errno == EINTR) {
             fprintf(stderr, "warning: failed to receive SYNACK\n");
             isSampleRTTBeingMeasured = 0;
             timeout *= 2;
@@ -191,7 +191,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         ualarm(remainingTimeout, 0);
         serverSegmentLen = recvfrom(clientSocket, serverSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
         timeRemaining = (int)ualarm(0, 0);
-        if(errno == EINTR) {
+        if(!timeRemaining || errno == EINTR) {
             timeout *= 2;
             remainingTimeout = timeout;
 

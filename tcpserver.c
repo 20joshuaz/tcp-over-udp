@@ -177,7 +177,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         ualarm(remainingTimeout, 0);
         clientSegmentLen = recvfrom(serverSocket, clientSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
         timeRemaining = (int)ualarm(0, 0);
-        if(errno == EINTR) {
+        if(!timeRemaining || errno == EINTR) {
             fprintf(stderr, "warning: failed to receive ACK\n");
             timeout *= 2;
             remainingTimeout = timeout;
