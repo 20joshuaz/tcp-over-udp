@@ -10,19 +10,6 @@
 #define SYN_FLAG 0x02
 #define FIN_FLAG 0x01
 
-/*
-struct TCPHeader {
-    uint16_t sourcePort;
-    uint16_t destPort;
-    uint32_t seqNum;
-    uint32_t ackNum;
-    uint8_t length;
-    uint8_t flags;
-    uint16_t recvWindow;
-    uint16_t checksum;
-    uint16_t urgentPtr;
-};
-*/
 struct TCPSegment {
     uint16_t sourcePort;
     uint16_t destPort;

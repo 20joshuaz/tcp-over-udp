@@ -115,8 +115,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
             exit(1);
         }
 
-        if(isChecksumValid(serverSegment)) {
-            assert(serverSegment->ackNum == ISN + 1 && isFlagSet(serverSegment, SYN_FLAG | ACK_FLAG));
+        if(isChecksumValid(serverSegment) && serverSegment->ackNum == ISN + 1 && isFlagSet(serverSegment, SYN_FLAG | ACK_FLAG)) {
             if(isSampleRTTBeingMeasured) {
                 updateRTTAndTimeout(timeout - timeRemaining, &estimatedRTT, &devRTT, &timeout, ALPHA, BETA);
             }
@@ -219,8 +218,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         int resumeTimer = 1;
         if(isChecksumValid(serverSegment)) {
             uint32_t serverACKNum = serverSegment->ackNum;
-            if(isACKNumInRange(window, serverACKNum)) {
-                assert(isFlagSet(serverSegment, ACK_FLAG));
+            if(isACKNumInRange(window, serverACKNum) && isFlagSet(serverSegment, ACK_FLAG)) {
                 for( ; !isEmpty(window) && window->arr[window->startIndex].seqNum != serverACKNum; deleteHead(window));
                 // isEmpty(window) || window->arr[window->startIndex].seqNum == serverACKNum
 
@@ -234,8 +232,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
                 remainingTimeout = timeout;
                 resumeTimer = 0;
             }
-            else if(serverACKNum == ISN + 1) {
-                assert(isFlagSet(serverSegment, SYN_FLAG | ACK_FLAG));
+            else if(serverACKNum == ISN + 1 && isFlagSet(serverSegment, SYN_FLAG | ACK_FLAG)) {
                 if(sendto(clientSocket, clientSegment, HEADER_LEN, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != HEADER_LEN) {
                     perror("failed to send to socket");
                     freeWindow(window); free(fileSegment); fclose(file); free(clientSegment); free(serverSegment); close(clientSocket);
@@ -277,8 +274,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
             exit(1);
         }
 
-        if(isChecksumValid(serverSegment) && serverSegment->ackNum == seqNum) {
-            assert(isFlagSet(serverSegment, ACK_FLAG));
+        if(isChecksumValid(serverSegment) && serverSegment->ackNum == seqNum && isFlagSet(serverSegment, ACK_FLAG)) {
             break;
         }
     }

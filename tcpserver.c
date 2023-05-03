@@ -1,5 +1,4 @@
 #include <arpa/inet.h>
-#include <assert.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -73,8 +72,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
             exit(1);
         }
 
-        if(isChecksumValid(clientSegment)) {
-            assert(isFlagSet(clientSegment, SYN_FLAG));
+        if(isChecksumValid(clientSegment) && isFlagSet(clientSegment, SYN_FLAG)) {
             break;
         }
     }
@@ -105,8 +103,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
             exit(1);
         }
 
-        if(isChecksumValid(clientSegment)) {
-            assert(clientSegment->ackNum == nextExpectedClientSeq && isFlagSet(clientSegment, ACK_FLAG));
+        if(isChecksumValid(clientSegment) && clientSegment->ackNum == nextExpectedClientSeq && isFlagSet(clientSegment, ACK_FLAG)) {
             break;
         }
     }
