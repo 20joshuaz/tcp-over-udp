@@ -65,7 +65,9 @@ void getACKRange(struct Window *window, uint32_t *startACKPtr, uint32_t *endACKP
 }
 
 int isACKNumInRange(struct Window *window, uint32_t ackNum) {
-    assert(!isEmpty(window));
+    if(isEmpty(window)) {
+        return 0;
+    }
     uint32_t startACK, endACK;
     getACKRange(window, &startACK, &endACK);
     if(endACK > startACK) {

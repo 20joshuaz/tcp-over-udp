@@ -226,9 +226,9 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
                     gettimeofday(&endTime, NULL);
                     timersub(&endTime, &startTime, &diffTime);
                     updateRTTAndTimeout((int)(diffTime.tv_sec * SI_MICRO + diffTime.tv_usec), &estimatedRTT, &devRTT, &timeout, ALPHA, BETA);
+                    isSampleRTTBeingMeasured = 0;
                 }
 
-                isSampleRTTBeingMeasured = 0;
                 remainingTimeout = timeout;
                 resumeTimer = 0;
             }
