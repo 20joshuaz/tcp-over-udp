@@ -1,6 +1,6 @@
 #include <assert.h>
 #include <stdlib.h>
-#include <sys/socket.h>
+#include <string.h>
 
 #include "window.h"
 
@@ -43,10 +43,10 @@ int incrementIndexWithWraparound(int index, int maxIndex) {
     return index;
 }
 
-void offer(struct Window *window, struct TCPSegment segment) {
+void offer(struct Window *window, struct TCPSegment *segment) {
     assert(!isFull(window));
     window->endIndex = incrementIndexWithWraparound(window->endIndex, window->capacity);
-    window->arr[window->endIndex] = segment;
+    memcpy(window->arr + window->endIndex, segment, sizeof(struct TCPSegment));
     window->length++;
 }
 
@@ -56,21 +56,20 @@ void deleteHead(struct Window *window) {
     window->length--;
 }
 
-void getSeqRange(struct Window *window, uint32_t *startSeqPtr, uint32_t *endSeqPtr, int includeDataLen) {
+void getACKRange(struct Window *window, uint32_t *startACKPtr, uint32_t *endACKPtr) {
     assert(!isEmpty(window));
-    struct TCPSegment startSegment, endSegment;
-    startSegment = window->arr[window->startIndex];
-    endSegment = window->arr[window->endIndex];
-    *startSeqPtr = startSegment.header.seqNum + includeDataLen * startSegment.dataLen;
-    *endSeqPtr = endSegment.header.seqNum + includeDataLen * endSegment.dataLen;
+    struct TCPSegment *startSegment = window->arr + window->startIndex;
+    struct TCPSegment *endSegment = window->arr + window->endIndex;
+    *startACKPtr = startSegment->seqNum + startSegment->dataLen;
+    *endACKPtr = endSegment->seqNum + endSegment->dataLen;
 }
 
-int isSeqNumInRange(struct Window *window, uint32_t seqNum, int includeDataLen) {
+int isACKNumInRange(struct Window *window, uint32_t ackNum) {
     assert(!isEmpty(window));
-    uint32_t startSeq, endSeq;
-    getSeqRange(window, &startSeq, &endSeq, includeDataLen);
-    if(endSeq > startSeq) {
-        return startSeq <= seqNum && seqNum <= endSeq;
+    uint32_t startACK, endACK;
+    getACKRange(window, &startACK, &endACK);
+    if(endACK > startACK) {
+        return startACK <= ackNum && ackNum <= endACK;
     }
-    return startSeq <= seqNum || seqNum <= endSeq;
+    return startACK <= ackNum || ackNum <= endACK;
 }
