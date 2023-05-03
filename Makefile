@@ -4,15 +4,15 @@ LDFLAGS = -g
 # LDLIBS =
 
 .PHONY: all
-all: tcpserver tcpclient
-
-tcpserver: validators.a tcp.a
-
-tcpserver.o:
+all: clean tcpclient tcpserver
 
 tcpclient: validators.a tcp.a window.a
 
 tcpclient.o:
+
+tcpserver: validators.a tcp.a
+
+tcpserver.o:
 
 validators.a: validators.o
 	ar rcs validators.a validators.o

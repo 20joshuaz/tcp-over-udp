@@ -67,7 +67,7 @@ void fillTCPSegment(struct TCPSegment *segment, uint16_t sourcePort, uint16_t de
     segment->checksum = 0;
     segment->urgentPtr = 0;
 
-    uint16_t checksum = calculateSumOfHeaderWords(header);
+    uint16_t checksum = calculateSumOfHeaderWords(segment);
     segment->checksum = ~checksum;
 
     memcpy(segment->data, data, dataLen);

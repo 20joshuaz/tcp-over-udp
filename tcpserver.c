@@ -11,10 +11,12 @@
 #include "tcp.h"
 #include "validators.h"
 
+#define SI_MICRO ((int)1e6)
 #define ISN 0
 #define INITIAL_TIMEOUT 1
 #define ALPHA 0.125
 #define BETA 0.25
+// #define FINAL_WAIT 10
 
 void doNothing(int signum) {}
 
@@ -70,6 +72,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
             free(serverSegment); free(clientSegment); close(serverSocket);
             exit(1);
         }
+
         if(isChecksumValid(clientSegment)) {
             assert(isFlagSet(clientSegment, SYN_FLAG));
             break;
@@ -101,6 +104,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
             free(serverSegment); free(clientSegment); close(serverSocket);
             exit(1);
         }
+
         if(isChecksumValid(clientSegment)) {
             assert(clientSegment->ackNum == nextExpectedClientSeq && isFlagSet(clientSegment, ACK_FLAG));
             break;
@@ -124,11 +128,10 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
             exit(1);
         }
         if(isChecksumValid(clientSegment)) {
-            if(isFlagSet(clientSegment, FIN_FLAG)) {
-                break;
-            }
-
             if(clientSegment->seqNum == nextExpectedClientSeq) {
+                if(isFlagSet(clientSegment, FIN_FLAG)) {
+                    break;
+                }
                 clientDataLen = clientSegmentLen - HEADER_LEN;
                 if(fwrite(clientSegment->data, 1, clientDataLen, file) != clientDataLen) {
                     perror("failed to write to file");
@@ -152,11 +155,59 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
 
     fclose(file);
 
-    nextExpectedClientSeq++;
-    //serverSegment = makeTCPSegment(listenPort, ackPort, ISN + 1, nextExpectedClientSeq, ACK_FLAG, NULL, 0);
-    //serverSegment = makeTCPSegment(listenPort, ackPort, ISN + 1, nextExpectedClientSeq, FIN_FLAG, NULL, 0);
+    // nextExpectedClientSeq;
+    fillTCPSegment(serverSegment, listenPort, ackPort, ISN + 1, nextExpectedClientSeq + 1, ACK_FLAG, NULL, 0);
+    fprintf(stderr, "log: received FIN, sending ACK\n");
+    if(sendto(serverSocket, serverSegment, HEADER_LEN, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != HEADER_LEN) {
+        perror("failed to send to socket");
+        free(serverSegment); free(clientSegment); close(serverSocket);
+        exit(1);
+    }
 
-    free(serverSegment); free(clientSegment); close(serverSocket);
+    struct TCPSegment *finSegment = (struct TCPSegment *)malloc(sizeof(struct TCPSegment));
+    fillTCPSegment(finSegment, listenPort, ackPort, ISN + 1, nextExpectedClientSeq + 1, FIN_FLAG, NULL, 0);
+    int remainingTimeout = timeout;
+    int timeRemaining;
+    fprintf(stderr, "log: sending FIN\n");
+    for(;;) {
+        if(sendto(serverSocket, finSegment, HEADER_LEN, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != HEADER_LEN) {
+            perror("failed to send to socket");
+            free(finSegment); free(serverSegment); free(clientSegment); close(serverSocket);
+            exit(1);
+        }
+
+        errno = 0;
+        ualarm(remainingTimeout, 0);
+        clientSegmentLen = recvfrom(serverSocket, clientSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
+        timeRemaining = (int)ualarm(0, 0);
+        if(errno == EINTR) {
+            fprintf(stderr, "warning: failed to receive ACK\n");
+            timeout *= 2;
+            remainingTimeout = timeout;
+            continue;
+        }
+        if(clientSegmentLen < 0) {
+            perror("failed to read from socket");
+            free(finSegment); free(serverSegment); free(clientSegment); close(serverSocket);
+            exit(1);
+        }
+
+        if(isChecksumValid(clientSegment)) {
+            if(clientSegment->ackNum == ISN + 2 && isFlagSet(clientSegment, ACK_FLAG)) {
+                break;
+            }
+            if(clientSegment->seqNum == nextExpectedClientSeq && isFlagSet(clientSegment, FIN_FLAG)) {
+                if(sendto(serverSocket, serverSegment, HEADER_LEN, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != HEADER_LEN) {
+                    perror("failed to send to socket");
+                    free(finSegment); free(serverSegment); free(clientSegment); close(serverSocket);
+                    exit(1);
+                }
+            }
+        }
+        remainingTimeout = timeRemaining;
+    }
+
+    free(finSegment); free(serverSegment); free(clientSegment); close(serverSocket);
     fprintf(stderr, "log: goodbye\n");
 }
 
