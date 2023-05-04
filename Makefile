@@ -4,7 +4,7 @@ LDFLAGS = -g
 # LDLIBS =
 
 .PHONY: all
-all: clean tcpclient tcpserver
+all: tcpclient tcpserver
 
 tcpclient: validators.a tcp.a window.a
 

@@ -16,6 +16,7 @@
 #define SI_MICRO ((int)1e6)
 #define ISN 0
 #define INITIAL_TIMEOUT 1
+#define TIMEOUT_MULTIPLIER 1.1
 #define ALPHA 0.125
 #define BETA 0.25
 #define FINAL_WAIT 3
@@ -103,10 +104,10 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         ualarm(timeout, 0);
         serverSegmentLen = recvfrom(clientSocket, serverSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
         timeRemaining = (int)ualarm(0, 0);
-        if(errno == EINTR) {
+        if(!timeRemaining || errno == EINTR) {
             fprintf(stderr, "warning: failed to receive SYNACK\n");
             isSampleRTTBeingMeasured = 0;
-            timeout *= 2;
+            timeout = (int)(timeout * TIMEOUT_MULTIPLIER);
             continue;
         }
         if(serverSegmentLen < 0) {
@@ -135,7 +136,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 
     uint32_t seqNum = ISN + 2;
     struct timeval startTime, endTime, diffTime;
-    uint32_t ackNumBeingTimed;
+    uint32_t seqNumBeingTimed;
     isSampleRTTBeingMeasured = 0;
 
     FILE *file = fopen(fileStr, "rb");
@@ -166,14 +167,14 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         while(!isFull(window) && (fileBufferLen = fread(fileBuffer, 1, MSS, file)) > 0) {
             fillTCPSegment(fileSegment, ackPort, udplPort, seqNum, nextExpectedServerSeq, 0, fileBuffer, (int)fileBufferLen);
             fileSegmentLen = HEADER_LEN + fileSegment->dataLen;
-            seqNum += fileSegment->dataLen;
             offer(window, fileSegment);
-
             if(!isSampleRTTBeingMeasured) {
                 isSampleRTTBeingMeasured = 1;
-                ackNumBeingTimed = seqNum;
+                seqNumBeingTimed = seqNum;
                 gettimeofday(&startTime, NULL);
             }
+
+            seqNum += fileSegment->dataLen;
 
             if(sendto(clientSocket, fileSegment, fileSegmentLen, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != fileSegmentLen) {
                 perror("failed to send to socket");
@@ -191,22 +192,23 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         ualarm(remainingTimeout, 0);
         serverSegmentLen = recvfrom(clientSocket, serverSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
         timeRemaining = (int)ualarm(0, 0);
-        if(errno == EINTR) {
-            timeout *= 2;
+        if(!timeRemaining || errno == EINTR) {
+            timeout = (int)(timeout * TIMEOUT_MULTIPLIER);
             remainingTimeout = timeout;
 
-            memcpy(fileSegment, window->arr + window->startIndex, sizeof(struct TCPSegment));
-            fileSegmentLen = HEADER_LEN + fileSegment->dataLen;
-
-            fprintf(stderr, "warning: failed to receive ACK for seq %d\n", fileSegment->seqNum);
-            if(sendto(clientSocket, fileSegment, fileSegmentLen, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != fileSegmentLen) {
-                perror("failed to send to socket");
-                freeWindow(window); free(fileSegment); fclose(file); free(clientSegment); free(serverSegment); close(clientSocket);
-                exit(1);
-            }
-            if(fileSegment->seqNum + fileSegment->dataLen == ackNumBeingTimed) {
-                isSampleRTTBeingMeasured = 0;
-            }
+            int currIndex = window->startIndex;
+            struct TCPSegment *segmentInWindow;
+            int segmentInWindowLen;
+            do {
+                segmentInWindow = window->arr + currIndex;
+                segmentInWindowLen = HEADER_LEN + segmentInWindow->dataLen;
+                if(sendto(clientSocket, segmentInWindow, segmentInWindowLen, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != segmentInWindowLen) {
+                    perror("failed to send to socket");
+                    freeWindow(window); free(fileSegment); fclose(file); free(clientSegment); free(serverSegment); close(clientSocket);
+                    exit(1);
+                }
+            } while((currIndex = next(window, currIndex)) != window->endIndex);
+            isSampleRTTBeingMeasured = 0;
             continue;
         }
         if(serverSegmentLen < 0) {
@@ -218,17 +220,17 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         int resumeTimer = 1;
         if(isChecksumValid(serverSegment)) {
             uint32_t serverACKNum = serverSegment->ackNum;
-            if(isACKNumInRange(window, serverACKNum) && isFlagSet(serverSegment, ACK_FLAG)) {
+            if(serverACKNum > window->arr[window->startIndex].seqNum && isFlagSet(serverSegment, ACK_FLAG)) {
                 for( ; !isEmpty(window) && window->arr[window->startIndex].seqNum != serverACKNum; deleteHead(window));
                 // isEmpty(window) || window->arr[window->startIndex].seqNum == serverACKNum
 
-                if(isSampleRTTBeingMeasured && !isACKNumInRange(window, ackNumBeingTimed)) {
+                if(isSampleRTTBeingMeasured && !isEmpty(window) && seqNumBeingTimed < window->arr[window->startIndex].seqNum) {
                     gettimeofday(&endTime, NULL);
                     timersub(&endTime, &startTime, &diffTime);
                     updateRTTAndTimeout((int)(diffTime.tv_sec * SI_MICRO + diffTime.tv_usec), &estimatedRTT, &devRTT, &timeout, ALPHA, BETA);
+                    isSampleRTTBeingMeasured = 0;
                 }
 
-                isSampleRTTBeingMeasured = 0;
                 remainingTimeout = timeout;
                 resumeTimer = 0;
             }
@@ -265,7 +267,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         ualarm(0, 0);
         if(errno == EINTR) {
             fprintf(stderr, "warning: failed to receive ACK for FIN\n");
-            timeout *= 2;
+            timeout = (int)(timeout * TIMEOUT_MULTIPLIER);
             continue;
         }
         if(serverSegmentLen < 0) {

@@ -13,9 +13,9 @@
 #define SI_MICRO ((int)1e6)
 #define ISN 0
 #define INITIAL_TIMEOUT 1
+#define TIMEOUT_MULTIPLIER 1.1
 #define ALPHA 0.125
 #define BETA 0.25
-// #define FINAL_WAIT 10
 
 void doNothing(int signum) {}
 
@@ -94,7 +94,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         ualarm(0, 0);
         if(errno == EINTR) {
             fprintf(stderr, "warning: failed to receive ACK\n");
-            timeout *= 2;
+            timeout = (int)(timeout * TIMEOUT_MULTIPLIER);
             continue;
         }
         if(clientSegmentLen < 0) {
@@ -116,6 +116,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         exit(1);
     }
     ssize_t clientDataLen;
+    uint32_t bytesReceived = 0;
 
     fprintf(stderr, "log: receiving file\n");
     for(;;) {
@@ -129,16 +130,15 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
                 if(isFlagSet(clientSegment, FIN_FLAG)) {
                     break;
                 }
+
                 clientDataLen = clientSegmentLen - HEADER_LEN;
+                fprintf(stderr, "log: received %d bytes\r", (bytesReceived += clientDataLen));
                 if(fwrite(clientSegment->data, 1, clientDataLen, file) != clientDataLen) {
                     perror("failed to write to file");
                     fclose(file); free(serverSegment); free(clientSegment); close(serverSocket);
                     exit(1);
                 }
                 nextExpectedClientSeq += clientDataLen;
-            }
-            else {
-                fprintf(stderr, "warning: received out-of-order seq %d\n", clientSegment->seqNum);
             }
 
             fillTCPSegment(serverSegment, listenPort, ackPort, ISN + 1, nextExpectedClientSeq, ACK_FLAG, NULL, 0);
@@ -150,9 +150,9 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         }
     }
 
+    fprintf(stderr, "\n");
     fclose(file);
 
-    // nextExpectedClientSeq;
     fillTCPSegment(serverSegment, listenPort, ackPort, ISN + 1, nextExpectedClientSeq + 1, ACK_FLAG, NULL, 0);
     fprintf(stderr, "log: received FIN, sending ACK\n");
     if(sendto(serverSocket, serverSegment, HEADER_LEN, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != HEADER_LEN) {
@@ -177,9 +177,9 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         ualarm(remainingTimeout, 0);
         clientSegmentLen = recvfrom(serverSocket, clientSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
         timeRemaining = (int)ualarm(0, 0);
-        if(errno == EINTR) {
+        if(!timeRemaining || errno == EINTR) {
             fprintf(stderr, "warning: failed to receive ACK\n");
-            timeout *= 2;
+            timeout = (int)(timeout * TIMEOUT_MULTIPLIER);
             remainingTimeout = timeout;
             continue;
         }
