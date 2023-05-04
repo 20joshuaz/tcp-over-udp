@@ -23,20 +23,21 @@ To run the server, do
 - `tcp.c/h` defines a TCP segment and functions for operating on it
 - `window.c/h` defines a window of TCP segments and functions for operating on it
 
-### Features and Notes
+### Bugs and Features
 - This project implements all the features listed in the directions, including
   - three-way handshake
   - reliable transmission of a file
   - connection teardown
-  - transmission time adjustment
+  - retransmission timer adjustment
   - logging
+    - delivery, receipt, and timeouts during three-way handshake
+    - receipt during file transfer (logging delivery and timeouts would result in too many messages)
+    - delivery, receipt, and timeouts during connection teardown
 - The code works as is. You can adjust some variables by changing the `define` macros at the top of `tcpclient.c` and `tcpserver.c`.
-  - The timeout multiplier is set to 1.1. If it is set to 2 (as specified in the textbook), the file transfer sometimes stalls since the timeout increases too quickly.
-- When resending segments after a timeout, the client uses a Go-Back-N policy. It sends all segments in the window.
-  - GBN works better for this project since the server does not have a buffer for storing out-of-order segments. Reliable transfer still works with the TCP retransmission policy, but once one segment times out, all future segments also time out.
-  - Sequence and ACK numbers are still based on the TCP policy.
+- The number of segments in the client's window is the inputted window size divided by (using integer division) the MSS.
 - Because this project does not implement flow control, the receive window field is not used and is set to zero.
-- Though I haven't seen it happen, it is technically possible for the server to never quit because it never receives an ACK for its FIN. In this case, you can safely quit the program. The file should be written to.
+- The sequence numbers don't wrap around, so the largest file you can transfer is around 2<sup>32</sup> bytes.
+- Though I haven't seen it happen, it is technically possible for the server to never quit because it never receives an ACK for its FIN. In this case, you can safely quit the program. The output file should be written to.
 
 ### Testing Environment
 - I didn't account for endianness in this project. It works on my M1 Mac and a VM running Ubuntu.

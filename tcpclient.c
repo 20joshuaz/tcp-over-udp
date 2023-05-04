@@ -426,10 +426,6 @@ int main(int argc, char **argv) {
         exit(1);
     }
     int windowSize = (int)strtol(windowSizeStr, NULL, 10);
-    if(windowSize / MSS < 2) {
-        fprintf(stderr, "error: window size too small\n");
-        exit(1);
-    }
     int ackPort = getPort(argv[5]);
     if(!ackPort) {
         fprintf(stderr, "error: invalid ack port\n");

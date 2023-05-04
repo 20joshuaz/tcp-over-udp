@@ -20,7 +20,7 @@ struct TCPSegment {
     uint16_t recvWindow;
     uint16_t checksum;
     uint16_t urgentPtr;
-    //struct TCPHeader header;
+
     char data[MSS];
     int dataLen;
 };
@@ -31,6 +31,5 @@ void fillTCPSegment(struct TCPSegment *segment, uint16_t sourcePort, uint16_t de
                     uint32_t seqNum, uint32_t ackNum, uint8_t flags, char *data, int dataLen);
 int isChecksumValid(struct TCPSegment *segment);
 void printTCPHeader(struct TCPSegment *segment);
-
 
 #endif
