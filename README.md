@@ -1,6 +1,15 @@
 # CSEE 4119 PA2: Simplified TCP over UDP
 Joshua Zhou, jz3311
 
+### Slip Days
+Name: Joshua Zhou
+
+UNI: jz3311
+
+Assignment: PA2
+
+\# of Slip Days Requested: 1
+
 ### How to run
 The Makefile generates executables for the client and server.
 ```
