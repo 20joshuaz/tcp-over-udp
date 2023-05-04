@@ -167,6 +167,8 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
     uint32_t seqNumBeingTimed;  // seq of the segment whose sample RTT is being timed
     isSampleRTTBeingMeasured = 0;
 
+    uint32_t bytesSent = 0;  // the number of bytes received, used for logging
+
     // Open file for reading
     FILE *file = fopen(fileStr, "rb");
     if(!file) {
@@ -223,6 +225,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
                 freeWindow(window); free(fileSegment); fclose(file); free(clientSegment); free(serverSegment); close(clientSocket);
                 exit(1);
             }
+            fprintf(stderr, "log: sent %d bytes\r", (bytesSent += fileSegment->dataLen));
         }
         if(!fileBufferLen && ferror(file)) {
             perror("failed to read file");
@@ -291,6 +294,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         }
     } while(!isEmpty(window));
 
+    fprintf(stderr, "\n");
     freeWindow(window);
     free(fileSegment);
     fclose(file);
