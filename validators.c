@@ -58,3 +58,12 @@ int isValidIP(char *ip) {
     }
     return 1;
 }
+
+int getMicroTime(struct itimerval *it) {
+    return (int)(it->it_value.tv_sec * SI_MICRO + it->it_value.tv_usec);
+}
+
+void setMicroTime(struct itimerval *it, int totalMicro) {
+    it->it_value.tv_sec = totalMicro / SI_MICRO;
+    it->it_value.tv_usec = totalMicro % SI_MICRO;
+}

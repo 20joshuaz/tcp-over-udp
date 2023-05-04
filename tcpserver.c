@@ -10,7 +10,6 @@
 #include "tcp.h"
 #include "validators.h"
 
-#define SI_MICRO ((int)1e6)
 #define ISN 0
 #define INITIAL_TIMEOUT 1
 #define TIMEOUT_MULTIPLIER 1.1
@@ -65,7 +64,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
     }
     ssize_t clientSegmentLen;  // amount of data in clientSegment (including TCP header)
     uint32_t nextExpectedClientSeq;  // the next seq expected to be sent by the client (i.e., the ACK sent back to the client)
-    int timeout = (int)(INITIAL_TIMEOUT * 1e6);  // transmission timeout
+    int timeout = (int)(INITIAL_TIMEOUT * SI_MICRO);  // transmission timeout
 
     /*
      * Listen for SYN:

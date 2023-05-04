@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <assert.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -12,7 +13,6 @@
 #include "tcp.h"
 #include "validators.h"
 
-#define SI_MICRO ((int)1e6)
 #define ISN 0
 #define INITIAL_TIMEOUT 1
 #define TIMEOUT_MULTIPLIER 1.1
@@ -97,6 +97,14 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
     int estimatedRTT = -1;
     int devRTT;
 
+    struct itimerval itTimeout;
+    memset(&itTimeout, 0, sizeof(itTimeout));
+    setMicroTime(&itTimeout, timeout);
+    struct itimerval itTimeRemaining;
+    memset(&itTimeRemaining, 0, sizeof(itTimeRemaining));
+    struct itimerval disarmer;
+    memset(&disarmer, 0, sizeof(disarmer));
+
     // Create SYN segment
     fillTCPSegment(clientSegment, ackPort, udplPort, ISN, 0, SYN_FLAG, NULL, 0);
     isSampleRTTBeingMeasured = 1;  // SYN segment's sample RTT will be measured
@@ -117,13 +125,15 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         }
 
         errno = 0;
-        ualarm(timeout, 0);
+        setitimer(ITIMER_REAL, &itTimeout, NULL);
         serverSegmentLen = recvfrom(clientSocket, serverSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
-        timeRemaining = (int)ualarm(0, 0);
-        if(!timeRemaining || errno == EINTR) {
+        setitimer(ITIMER_REAL, &disarmer, &itTimeRemaining);
+        timeRemaining = getMicroTime(&itTimeRemaining);
+        if(errno == EINTR) {
             fprintf(stderr, "warning: failed to receive SYNACK\n");
             isSampleRTTBeingMeasured = 0;
             timeout = (int)(timeout * TIMEOUT_MULTIPLIER);
+            setMicroTime(&itTimeout, timeout);
             continue;
         }
         if(serverSegmentLen < 0) {
@@ -180,7 +190,10 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         free(fileSegment); fclose(file); free(clientSegment); free(serverSegment); close(clientSocket);
         exit(1);
     }
-    int remainingTimeout = timeout;
+
+    struct itimerval itRemainingTimeout;
+    memset(&itRemainingTimeout, 0, sizeof(itRemainingTimeout));
+    setMicroTime(&itRemainingTimeout, timeout);
 
     /*
      * Send file:
@@ -218,12 +231,13 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         }
 
         errno = 0;
-        ualarm(remainingTimeout, 0);
+        setitimer(ITIMER_REAL, &itRemainingTimeout, NULL);
         serverSegmentLen = recvfrom(clientSocket, serverSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
-        timeRemaining = (int)ualarm(0, 0);
+        setitimer(ITIMER_REAL, &disarmer, &itTimeRemaining);
+        timeRemaining = getMicroTime(&itTimeRemaining);
         if(!timeRemaining || errno == EINTR) {
             timeout = (int)(timeout * TIMEOUT_MULTIPLIER);
-            remainingTimeout = timeout;
+            setMicroTime(&itRemainingTimeout, timeout);
 
             int currIndex = window->startIndex;
             struct TCPSegment *segmentInWindow;
@@ -260,7 +274,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
                     isSampleRTTBeingMeasured = 0;
                 }
 
-                remainingTimeout = timeout;
+                setMicroTime(&itRemainingTimeout, timeout);
                 resumeTimer = 0;
             }
             else if(serverACKNum == ISN + 1 && isFlagSet(serverSegment, SYN_FLAG | ACK_FLAG)) {
@@ -273,13 +287,15 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
             // else ACK out of range
         }
         if(resumeTimer) {
-            remainingTimeout = timeRemaining;
+            setMicroTime(&itRemainingTimeout, timeRemaining);
         }
     } while(!isEmpty(window));
 
     freeWindow(window);
     free(fileSegment);
     fclose(file);
+
+    setMicroTime(&itTimeout, timeout);
 
     // Create FIN segment
     fillTCPSegment(clientSegment, ackPort, udplPort, seqNum++, nextExpectedServerSeq, FIN_FLAG, NULL, 0);
@@ -300,12 +316,13 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         }
 
         errno = 0;
-        ualarm(timeout, 0);
+        setitimer(ITIMER_REAL, &itTimeout, NULL);
         serverSegmentLen = recvfrom(clientSocket, serverSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
-        ualarm(0, 0);
+        setitimer(ITIMER_REAL, &disarmer, NULL);
         if(errno == EINTR) {
             fprintf(stderr, "warning: failed to receive ACK for FIN\n");
             timeout = (int)(timeout * TIMEOUT_MULTIPLIER);
+            setMicroTime(&itTimeout, timeout);
             continue;
         }
         if(serverSegmentLen < 0) {
@@ -340,7 +357,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
     // Create ACK for server's FIN
     fillTCPSegment(clientSegment, ackPort, udplPort, seqNum, nextExpectedServerSeq + 1, ACK_FLAG, NULL, 0);
     int hasSeenFIN = 1;  // whether a FIN from the server has just been received
-    remainingTimeout = (int)(FINAL_WAIT * SI_MICRO);
+    setMicroTime(&itRemainingTimeout, (int)(FINAL_WAIT * SI_MICRO));
 
     /*
      * Send ACK:
@@ -361,10 +378,10 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 
         hasSeenFIN = 0;
         errno = 0;
-        ualarm(remainingTimeout, 0);
+        setitimer(ITIMER_REAL, &itRemainingTimeout, NULL);
         serverSegmentLen = recvfrom(clientSocket, serverSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
-        remainingTimeout = (int)ualarm(0, 0);
-        if(errno == EINTR) {
+        setitimer(ITIMER_REAL, &disarmer, &itRemainingTimeout);
+        if(!getMicroTime(&itRemainingTimeout) || errno == EINTR) {
             break;
         }
         if(serverSegmentLen < 0) {
