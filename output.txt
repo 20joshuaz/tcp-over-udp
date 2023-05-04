@@ -1,0 +1,18 @@
+./tcpserver foo_copy.mp4 10026 127.0.0.1 10025
+log: listening for SYN
+log: received SYN, sending SYNACK and listening for ACK
+log: receiving file
+log: received 5917719 bytes
+log: received FIN, sending ACK
+log: sending FIN
+log: goodbye
+
+./tcpclient foo.mp4 127.0.0.1 41192 2000 10025
+log: sending SYN
+log: received SYNACK, sending ACK
+log: sending file
+log: sent 5917719 bytes
+log: finished sending file, sending FIN
+log: received ACK for FIN, listening for FIN
+log: received FIN, sending ACK and waiting 3.0 seconds
+log: goodbye

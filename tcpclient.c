@@ -14,11 +14,11 @@
 #include "validators.h"
 
 #define ISN 0
-#define INITIAL_TIMEOUT 1
-#define TIMEOUT_MULTIPLIER 1.1
+#define INITIAL_TIMEOUT 1  // the initial timeout, in seconds
+#define TIMEOUT_MULTIPLIER 1.1  // the timeout multiplier when a timeout occurs
 #define ALPHA 0.125
 #define BETA 0.25
-#define FINAL_WAIT 3
+#define FINAL_WAIT 3  // how long the client waits after receiving an ACK for its FIN, in seconds
 
 void doNothing(int signum) {}
 
@@ -167,6 +167,8 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
     uint32_t seqNumBeingTimed;  // seq of the segment whose sample RTT is being timed
     isSampleRTTBeingMeasured = 0;
 
+    uint32_t bytesSent = 0;  // the number of bytes received, used for logging
+
     // Open file for reading
     FILE *file = fopen(fileStr, "rb");
     if(!file) {
@@ -223,6 +225,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
                 freeWindow(window); free(fileSegment); fclose(file); free(clientSegment); free(serverSegment); close(clientSocket);
                 exit(1);
             }
+            fprintf(stderr, "log: sent %d bytes\r", (bytesSent += fileSegment->dataLen));
         }
         if(!fileBufferLen && ferror(file)) {
             perror("failed to read file");
@@ -291,6 +294,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         }
     } while(!isEmpty(window));
 
+    fprintf(stderr, "\n");
     freeWindow(window);
     free(fileSegment);
     fclose(file);
@@ -426,10 +430,6 @@ int main(int argc, char **argv) {
         exit(1);
     }
     int windowSize = (int)strtol(windowSizeStr, NULL, 10);
-    if(windowSize / MSS < 2) {
-        fprintf(stderr, "error: window size too small\n");
-        exit(1);
-    }
     int ackPort = getPort(argv[5]);
     if(!ackPort) {
         fprintf(stderr, "error: invalid ack port\n");
