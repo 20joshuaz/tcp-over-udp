@@ -22,6 +22,11 @@ To run the server, do
 - `validators.c/h` contains validators for input checking
 - `tcp.c/h` defines a TCP segment and functions for operating on it
 - `window.c/h` defines a window of TCP segments and functions for operating on it
+- Makefile
+- README.md
+- DESIGN.md describes the project's design
+- output.txt shows a sample client-server interaction
+  - Note that the client and server are capable of more types of logging than what is shown
 
 ### Bugs and Features
 - This project implements all the features listed in the directions, including
