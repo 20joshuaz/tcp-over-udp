@@ -3,14 +3,23 @@
 
 #include "tcp.h"
 
+/*
+ * Checks if the nth bit is set in num.
+ */
 int getNthBit(int num, int n) {
     return num >> n & 1;
 }
 
+/*
+ * Sets the nth bit in num to 1.
+ */
 int setNthBit(int num, int n) {
     return num | (1 << n);
 }
 
+/*
+ * Performs a bitwise sum between a and b. Stores the result and carryover.
+ */
 void doBitwiseSum(uint16_t a, uint16_t b, uint16_t *resPtr, uint16_t *carryoverPtr) {
     uint16_t res = 0;
     int carryover = 0;
@@ -35,6 +44,9 @@ void doBitwiseSum(uint16_t a, uint16_t b, uint16_t *resPtr, uint16_t *carryoverP
     *carryoverPtr = carryover;
 }
 
+/*
+ * Calculates the sum between a and b. Wraps carryovers around.
+ */
 uint16_t calculateSumWithOverflow(uint16_t a, uint16_t b) {
     do {
         doBitwiseSum(a, b, &a, &b);
@@ -42,6 +54,9 @@ uint16_t calculateSumWithOverflow(uint16_t a, uint16_t b) {
     return a;
 }
 
+/*
+ * Calculates the sum of all the words in the header.
+ */
 uint16_t calculateSumOfHeaderWords(struct TCPSegment *segment) {
     uint16_t *rawSegmentPtr = (uint16_t *)segment;
     uint16_t sum = 0;
@@ -51,10 +66,16 @@ uint16_t calculateSumOfHeaderWords(struct TCPSegment *segment) {
     return sum;
 }
 
+/*
+ * Checks whether a flag is set in a header.
+ */
 int isFlagSet(struct TCPSegment *segment, uint8_t flag) {
     return (segment->flags & flag) == flag;
 }
 
+/*
+ * Fills a TCP segment.
+ */
 void fillTCPSegment(struct TCPSegment *segment, uint16_t sourcePort, uint16_t destPort,
         uint32_t seqNum, uint32_t ackNum, uint8_t flags, char *data, int dataLen) {
     segment->sourcePort = sourcePort;
@@ -74,6 +95,9 @@ void fillTCPSegment(struct TCPSegment *segment, uint16_t sourcePort, uint16_t de
     segment->dataLen = dataLen;
 }
 
+/*
+ * Determines whether a segment is corrupt using its checksum.
+ */
 int isChecksumValid(struct TCPSegment *segment) {
     uint16_t totalSum = calculateSumOfHeaderWords(segment);
     for(int i = 0; i < 16; i++) {
@@ -84,6 +108,9 @@ int isChecksumValid(struct TCPSegment *segment) {
     return 1;
 }
 
+/*
+ * Print a TCP header.
+ */
 void printTCPHeader(struct TCPSegment *segment) {
     fprintf(stderr, "{\n");
     fprintf(stderr, "\tsourcePort: %d\n", segment->sourcePort);

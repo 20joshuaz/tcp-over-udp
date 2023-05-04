@@ -4,6 +4,9 @@
 
 #include "validators.h"
 
+/*
+ * Checks whether a string is a number (contains only numerals).
+ */
 int isNumber(char *s) {
     for(char *trav = s; *trav; trav++) {
         if(!isdigit(*trav)) {
@@ -13,6 +16,9 @@ int isNumber(char *s) {
     return *s != 0;  // returns false for empty string
 }
 
+/*
+ * Extracts a port from a string.
+ */
 int getPort(char *portStr) {
     if(!isNumber(portStr)) {
         return 0;
@@ -21,6 +27,9 @@ int getPort(char *portStr) {
     return (port >= 1024 && port <= 65535) * port;
 }
 
+/*
+ * Checks whether a string is a valid IP address.
+ */
 int isValidIP(char *ip) {
     char *trav = ip;
     int numDots = 0;

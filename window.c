@@ -3,6 +3,9 @@
 
 #include "window.h"
 
+/*
+ * Constructs a new TCP segment window.
+ */
 struct Window *newWindow(int capacity) {
     struct TCPSegment *arr = (struct TCPSegment *)malloc(capacity * sizeof(struct TCPSegment));
     if(!arr) {
@@ -22,6 +25,9 @@ struct Window *newWindow(int capacity) {
     return window;
 }
 
+/*
+ * Frees a window.
+ */
 void freeWindow(struct Window *window) {
     free(window->arr);
     free(window);
@@ -35,6 +41,9 @@ int isFull(struct Window *window) {
     return window->length == window->capacity;
 }
 
+/*
+ * Gets the next index in a window (since the index may wrap around).
+ */
 int next(struct Window *window, int index) {
     if(++index == window->capacity) {
         return 0;
@@ -42,6 +51,9 @@ int next(struct Window *window, int index) {
     return index;
 }
 
+/*
+ * Offer a TCP segment to the window.
+ */
 void offer(struct Window *window, struct TCPSegment *segment) {
     if(isFull(window)) {
         return;
@@ -51,6 +63,9 @@ void offer(struct Window *window, struct TCPSegment *segment) {
     window->length++;
 }
 
+/*
+ * Deletes the first segment in a window.
+ */
 void deleteHead(struct Window *window) {
     if(isEmpty(window)) {
         return;
