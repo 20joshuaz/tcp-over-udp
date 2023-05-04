@@ -38,6 +38,7 @@ To run the server, do
     - delivery, receipt, and timeouts during three-way handshake
     - delivery and receipt during file transfer (logging timeouts would result in too many messages)
     - delivery, receipt, and timeouts during connection teardown
+    - fatal errors
 - The code works as is. You can adjust some variables by changing the `define` macros at the top of `tcpclient.c` and `tcpserver.c`.
 - The number of segments in the client's window is the inputted window size divided by (using integer division) the MSS.
 - Because this project does not implement flow control, the receive window field is not used and is set to zero.
