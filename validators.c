@@ -59,10 +59,16 @@ int isValidIP(char *ip) {
     return 1;
 }
 
+/*
+ * Gets the number of microseconds from an itimerval's it_value field.
+ */
 int getMicroTime(struct itimerval *it) {
     return (int)(it->it_value.tv_sec * SI_MICRO + it->it_value.tv_usec);
 }
 
+/*
+ * Sets an itimerval's it_value field to the specified number of microseconds.
+ */
 void setMicroTime(struct itimerval *it, int totalMicro) {
     it->it_value.tv_sec = totalMicro / SI_MICRO;
     it->it_value.tv_usec = totalMicro % SI_MICRO;
