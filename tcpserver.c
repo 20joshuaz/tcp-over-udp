@@ -39,8 +39,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         exit(1);
     }
 
-    // Create address for sending ACKs
-    struct sockaddr_in ackAddr;
+    struct sockaddr_in ackAddr;  // address for sending ACKs
     memset(&ackAddr, 0, sizeof(ackAddr));
     ackAddr.sin_family = AF_INET;
     ackAddr.sin_addr.s_addr = inet_addr(ackAddress);
@@ -56,7 +55,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         exit(1);
     }
 
-    // serverSegment holds segments created by the server. clientSegment holds segments sent by the client.
+    // serverSegment holds segments created by the server. clientSegment holds segments received from the client.
     struct TCPSegment *serverSegment = (struct TCPSegment *)malloc(sizeof(struct TCPSegment));
     struct TCPSegment *clientSegment = (struct TCPSegment *)malloc(sizeof(struct TCPSegment));
     if(!serverSegment || !clientSegment) {
@@ -131,7 +130,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
 
     nextExpectedClientSeq++;
 
-    // Open file
+    // Open file for writing
     FILE *file = fopen(fileStr, "wb");
     if(!file) {
         perror("failed to open file");
