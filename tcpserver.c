@@ -46,7 +46,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
     ackAddr.sin_addr.s_addr = inet_addr(ackAddress);
     ackAddr.sin_port = htons(ackPort);
 
-    // Do nothing on alarm signal. Needed since ualarm is used for transmission timeout.
+    // Do nothing on alarm signal
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = &doNothing;

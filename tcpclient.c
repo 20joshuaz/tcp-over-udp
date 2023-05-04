@@ -72,7 +72,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
     udplAddr.sin_addr.s_addr = inet_addr(udplAddress);
     udplAddr.sin_port = htons(udplPort);
 
-    // Do nothing on alarm signal. Needed since ualarm is used for transmission timeout.
+    // Do nothing on alarm signal
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = &doNothing;
