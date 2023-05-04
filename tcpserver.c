@@ -20,12 +20,14 @@
 void doNothing(int signum) {}
 
 void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
+    // Create socket
     int serverSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if(serverSocket < 0) {
         perror("failed to create socket");
         exit(1);
     }
 
+    // Bind socket to listenPort
     struct sockaddr_in serverAddr;
     memset(&serverAddr, 0, sizeof(serverAddr));
     serverAddr.sin_family = AF_INET;
@@ -37,12 +39,14 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         exit(1);
     }
 
+    // Create address for sending ACKs
     struct sockaddr_in ackAddr;
     memset(&ackAddr, 0, sizeof(ackAddr));
     ackAddr.sin_family = AF_INET;
     ackAddr.sin_addr.s_addr = inet_addr(ackAddress);
     ackAddr.sin_port = htons(ackPort);
 
+    // Do nothing on alarm signal. Needed since ualarm is used for transmission timeout.
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = &doNothing;
@@ -52,6 +56,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         exit(1);
     }
 
+    // serverSegment holds segments created by the server. clientSegment holds segments sent by the client.
     struct TCPSegment *serverSegment = (struct TCPSegment *)malloc(sizeof(struct TCPSegment));
     struct TCPSegment *clientSegment = (struct TCPSegment *)malloc(sizeof(struct TCPSegment));
     if(!serverSegment || !clientSegment) {
@@ -59,10 +64,16 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         free(serverSegment); free(clientSegment); close(serverSocket);
         exit(1);
     }
-    ssize_t clientSegmentLen;
-    uint32_t nextExpectedClientSeq;
-    int timeout = (int)(INITIAL_TIMEOUT * 1e6);
+    ssize_t clientSegmentLen;  // amount of data in clientSegment (including TCP header)
+    uint32_t nextExpectedClientSeq;  // the next seq expected to be sent by the client (i.e., the ACK sent back to the client)
+    int timeout = (int)(INITIAL_TIMEOUT * 1e6);  // transmission timeout
 
+    /*
+     * Listen for SYN:
+     *  - Call recvfrom.
+     *  - When segment is received, check that it is not corrupted and the SYN flag is set. If so, break from loop;
+     *    else, repeat.
+     */
     fprintf(stderr, "log: listening for SYN\n");
     for(;;) {
         clientSegmentLen = recvfrom(serverSocket, clientSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
@@ -77,10 +88,20 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         }
     }
 
+    // Get client's ISN from segment
     nextExpectedClientSeq = clientSegment->seqNum + 1;
+
+    // Create SYNACK segment
     fillTCPSegment(serverSegment, listenPort, ackPort, ISN, nextExpectedClientSeq, SYN_FLAG | ACK_FLAG, NULL, 0);
 
-    fprintf(stderr, "log: received SYN, sending SYNACK\n");
+    /*
+     * Send SYNACK and listen for ACK:
+     *  - Send SYNACK.
+     *  - Call recvfrom. If nothing is received within the timeout, increase it and repeat.
+     *  - If a segment is received, check that is it not corrupted, the ACK is ISN + 1, and the ACK flag is set. If so, break from loop;
+     *    else, repeat.
+     */
+    fprintf(stderr, "log: received SYN, sending SYNACK and listening for ACK\n");
     for(;;) {
         if(sendto(serverSocket, serverSegment, HEADER_LEN, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != HEADER_LEN) {
             perror("failed to send to socket");
@@ -103,21 +124,30 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
             exit(1);
         }
 
-        if(isChecksumValid(clientSegment) && clientSegment->ackNum == nextExpectedClientSeq && isFlagSet(clientSegment, ACK_FLAG)) {
+        if(isChecksumValid(clientSegment) && clientSegment->ackNum == ISN + 1 && isFlagSet(clientSegment, ACK_FLAG)) {
             break;
         }
     }
 
     nextExpectedClientSeq++;
 
+    // Open file
     FILE *file = fopen(fileStr, "wb");
     if(!file) {
         perror("failed to open file");
         exit(1);
     }
-    ssize_t clientDataLen;
-    uint32_t bytesReceived = 0;
+    ssize_t clientDataLen;  // amount of data excluding the TCP header
+    uint32_t bytesReceived = 0;  // the number of bytes received, used for logging
 
+    /*
+     * Receive file:
+     *  - The client sends the file, so all the server has to do is listen.
+     *  - When a segment is received, check if it is corrupted. If it is, then ignore it.
+     *  - Else, check if the FIN flag is set. If so, break from loop.
+     *  - Else, check the segment's seq. If the seq is the next expected one, write to the file and update the next expected seq.
+     *  - Regardless if the seq is the next expected one, send an ACK to the client specifying the next expected seq.
+     */
     fprintf(stderr, "log: receiving file\n");
     for(;;) {
         if((clientSegmentLen = recvfrom(serverSocket, clientSegment, sizeof(struct TCPSegment), 0, NULL, NULL)) < 0) {
@@ -153,6 +183,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
     fprintf(stderr, "\n");
     fclose(file);
 
+    // Create and send ACK for client's FIN
     fillTCPSegment(serverSegment, listenPort, ackPort, ISN + 1, nextExpectedClientSeq + 1, ACK_FLAG, NULL, 0);
     fprintf(stderr, "log: received FIN, sending ACK\n");
     if(sendto(serverSocket, serverSegment, HEADER_LEN, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != HEADER_LEN) {
@@ -161,10 +192,22 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         exit(1);
     }
 
+    // Create FIN segment
     struct TCPSegment *finSegment = (struct TCPSegment *)malloc(sizeof(struct TCPSegment));
     fillTCPSegment(finSegment, listenPort, ackPort, ISN + 1, nextExpectedClientSeq + 1, FIN_FLAG, NULL, 0);
-    int remainingTimeout = timeout;
-    int timeRemaining;
+    int remainingTimeout = timeout;  // the remaining time in a timer, used to continue the timer
+
+    /*
+     * Send FIN:
+     *  - Send FIN.
+     *  - Call recvfrom. If nothing is received within the timeout, increase it and repeat.
+     *  - If a segment is received, check that it is not corrupted. If it is, then ignore it.
+     *  - Else, check for two cases:
+     *    - If the ACK is ISN + 1 and the ACK flag is set, then break from loop.
+     *    - If the seq is the next expected one and the FIN flag is sent, then resend ACK.
+     *    - Else, the segment is a duplicate, so ignore.
+     *  - Repeat.
+     */
     fprintf(stderr, "log: sending FIN\n");
     for(;;) {
         if(sendto(serverSocket, finSegment, HEADER_LEN, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != HEADER_LEN) {
@@ -176,8 +219,8 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         errno = 0;
         ualarm(remainingTimeout, 0);
         clientSegmentLen = recvfrom(serverSocket, clientSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
-        timeRemaining = (int)ualarm(0, 0);
-        if(!timeRemaining || errno == EINTR) {
+        remainingTimeout = (int)ualarm(0, 0);
+        if(!remainingTimeout || errno == EINTR) {
             fprintf(stderr, "warning: failed to receive ACK\n");
             timeout = (int)(timeout * TIMEOUT_MULTIPLIER);
             remainingTimeout = timeout;
@@ -201,7 +244,6 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
                 }
             }
         }
-        remainingTimeout = timeRemaining;
     }
 
     free(finSegment); free(serverSegment); free(clientSegment); close(serverSocket);
