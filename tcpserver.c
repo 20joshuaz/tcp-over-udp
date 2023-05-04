@@ -120,7 +120,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         clientSegmentLen = recvfrom(serverSocket, clientSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
         setitimer(ITIMER_REAL, &disarmer, NULL);
         if(errno == EINTR) {
-            fprintf(stderr, "warning: failed to receive ACK\n");
+            fprintf(stderr, "warning: failed to receive ACK for SYNACK\n");
             timeout = (int)(timeout * TIMEOUT_MULTIPLIER);
             setMicroTime(&itTimeout, timeout);
             continue;
@@ -231,7 +231,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         clientSegmentLen = recvfrom(serverSocket, clientSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
         setitimer(ITIMER_REAL, &disarmer, &itRemainingTimeout);
         if(!getMicroTime(&itRemainingTimeout) || errno == EINTR) {
-            fprintf(stderr, "warning: failed to receive ACK\n");
+            fprintf(stderr, "warning: failed to receive ACK for FIN\n");
             timeout = (int)(timeout * TIMEOUT_MULTIPLIER);
             setMicroTime(&itRemainingTimeout, timeout);
             continue;

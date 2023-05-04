@@ -36,6 +36,7 @@ To run the server, do
   - GBN works better for this project since the server does not have a buffer for storing out-of-order segments. Reliable transfer still works with the TCP retransmission policy, but once one segment times out, all future segments also time out.
   - Sequence and ACK numbers are still based on the TCP policy.
 - Because this project does not implement flow control, the receive window field is not used and is set to zero.
+- Though I haven't seen it happen, it is technically possible for the server to never quit because it never receives an ACK for its FIN. In this case, you can safely quit the program. The file should be written to.
 
 ### Testing Environment
-- I didn't account for endianness in this project. The program works on my M1 Mac.
+- I didn't account for endianness in this project. It works on my M1 Mac and a VM running Ubuntu.
