@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -44,14 +43,18 @@ int next(struct Window *window, int index) {
 }
 
 void offer(struct Window *window, struct TCPSegment *segment) {
-    assert(!isFull(window));
+    if(isFull(window)) {
+        return;
+    }
     memcpy(window->arr + window->endIndex, segment, sizeof(struct TCPSegment));
     window->endIndex = next(window, window->endIndex);
     window->length++;
 }
 
 void deleteHead(struct Window *window) {
-    assert(!isEmpty(window));
+    if(isEmpty(window)) {
+        return;
+    }
     window->startIndex = next(window, window->startIndex);
     window->length--;
 }

@@ -1,5 +1,4 @@
 #include <arpa/inet.h>
-#include <assert.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -24,8 +23,9 @@
 void doNothing(int signum) {}
 
 void updateRTTAndTimeout(int sampleRTT, int *estimatedRTTPtr, int *devRTTPtr, int *timeoutPtr, float alpha, float beta) {
-    assert(sampleRTT > 0);
-
+    if(sampleRTT <= 0) {
+        return;
+    }
     if(*estimatedRTTPtr < 0) {
         *estimatedRTTPtr = sampleRTT;
         *devRTTPtr = sampleRTT / 2;
