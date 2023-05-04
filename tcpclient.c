@@ -1,5 +1,4 @@
 #include <arpa/inet.h>
-#include <assert.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -23,10 +22,15 @@
 
 void doNothing(int signum) {}
 
+/*
+ * Using the sample RTT, updates the estimated RTT, dev RTT, and timeout.
+ */
 void updateRTTAndTimeout(int sampleRTT, int *estimatedRTTPtr, int *devRTTPtr, int *timeoutPtr, float alpha, float beta) {
-    assert(sampleRTT > 0);
-
+    if(sampleRTT <= 0) {
+        return;
+    }
     if(*estimatedRTTPtr < 0) {
+        // Estimated RTT has not been set yet (first sample RTT)
         *estimatedRTTPtr = sampleRTT;
         *devRTTPtr = sampleRTT / 2;
         *timeoutPtr = *estimatedRTTPtr + 4 * *devRTTPtr;
@@ -43,12 +47,14 @@ void updateRTTAndTimeout(int sampleRTT, int *estimatedRTTPtr, int *devRTTPtr, in
 }
 
 void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, int ackPort) {
+    // Create socket
     int clientSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if(clientSocket < 0) {
         perror("failed to create socket");
         exit(1);
     }
 
+    // Bind socket to ackPort
     struct sockaddr_in clientAddr;
     memset(&clientAddr, 0, sizeof(clientAddr));
     clientAddr.sin_family = AF_INET;
@@ -60,12 +66,13 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         exit(1);
     }
 
-    struct sockaddr_in udplAddr;
+    struct sockaddr_in udplAddr;  // address of newudpl
     memset(&udplAddr, 0, sizeof(udplAddr));
     udplAddr.sin_family = AF_INET;
     udplAddr.sin_addr.s_addr = inet_addr(udplAddress);
     udplAddr.sin_port = htons(udplPort);
 
+    // Do nothing on alarm signal. Needed since ualarm is used for transmission timeout.
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = &doNothing;
@@ -75,6 +82,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         exit(1);
     }
 
+    // clientSegment holds segments created by the client. serverSegment holds segments received from the server.
     struct TCPSegment *clientSegment = (struct TCPSegment *)malloc(sizeof(struct TCPSegment));
     struct TCPSegment *serverSegment = (struct TCPSegment *)malloc(sizeof(struct TCPSegment));
     if(!clientSegment || !serverSegment) {
@@ -82,16 +90,24 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         free(clientSegment); free(serverSegment); close(clientSocket);
         exit(1);
     }
-    ssize_t serverSegmentLen;
-    int timeout = (int)(INITIAL_TIMEOUT * SI_MICRO);
-    int isSampleRTTBeingMeasured;
-    int timeRemaining;
+    ssize_t serverSegmentLen;  // amount of data in serverSegment
+    int timeout = (int)(INITIAL_TIMEOUT * SI_MICRO);  // transmission timeout
+    int isSampleRTTBeingMeasured;  // whether a segment's sample RTT is being measured
+    int timeRemaining;  // the remaining time in a timer, used to continue the timer
     int estimatedRTT = -1;
     int devRTT;
 
+    // Create SYN segment
     fillTCPSegment(clientSegment, ackPort, udplPort, ISN, 0, SYN_FLAG, NULL, 0);
+    isSampleRTTBeingMeasured = 1;  // SYN segment's sample RTT will be measured
 
-    isSampleRTTBeingMeasured = 1;
+    /*
+     * Send SYN:
+     *  - Send SYN.
+     *  - Call recvfrom. If nothing is received within the timeout, increase it and mark the segment's sample RTT as not being measured.
+     *  - If a segment is received, check that is it not corrupted, the ACK is ISN + 1, and the SYNACK flags are set. If so, update the RTT if the sample RTT was measured and break from loop.
+     *  - Else, ignore and repeat.
+     */
     fprintf(stderr, "log: sending SYN\n");
     for(;;) {
         if(sendto(clientSocket, clientSegment, HEADER_LEN, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != HEADER_LEN) {
@@ -126,6 +142,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 
     uint32_t nextExpectedServerSeq = serverSegment->seqNum + 1;
 
+    // Create and send ACK for server's SYNACK
     fillTCPSegment(clientSegment, ackPort, udplPort, ISN + 1, nextExpectedServerSeq, ACK_FLAG, NULL, 0);
     fprintf(stderr, "log: received SYNACK, sending ACK\n");
     if(sendto(clientSocket, clientSegment, HEADER_LEN, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != HEADER_LEN) {
@@ -135,33 +152,45 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
     }
 
     uint32_t seqNum = ISN + 2;
+    // startTime, endTime, and diffTime are used to measure the sample RTT in the presence of pipelining
     struct timeval startTime, endTime, diffTime;
-    uint32_t seqNumBeingTimed;
+    uint32_t seqNumBeingTimed;  // seq of the segment whose sample RTT is being timed
     isSampleRTTBeingMeasured = 0;
 
+    // Open file for reading
     FILE *file = fopen(fileStr, "rb");
     if(!file) {
         perror("failed to open file");
         free(clientSegment); free(serverSegment); close(clientSocket);
     }
 
+    // fileSegment contains TCP segments with data from the file
     struct TCPSegment *fileSegment = (struct TCPSegment *)malloc(sizeof(struct TCPSegment));
     if(!fileSegment) {
         perror("failed to malloc");
         fclose(file); free(clientSegment); free(serverSegment); close(clientSocket);
         exit(1);
     }
-    int fileSegmentLen;
+    int fileSegmentLen;  // amount of data in fileSegment
     char fileBuffer[MSS];
     size_t fileBufferLen;
-    struct Window *window = newWindow(windowSize / MSS);
+    struct Window *window = newWindow(windowSize / MSS);  // window of segments that are in transit
     if(!window) {
         perror("failed to malloc");
         free(fileSegment); fclose(file); free(clientSegment); free(serverSegment); close(clientSocket);
         exit(1);
     }
-
     int remainingTimeout = timeout;
+
+    /*
+     * Send file:
+     *  - Fill window with segments and send all segments.
+     *  - Call recvfrom. If nothing is received within the timeout, increase the timeout and resend all segments in window.
+     *  - If a segment is received, check if it is corrupted. If it is, then ignore it.
+     *  - Else, check the segment's ACK. If it is in the window, shift the window up to the ACK.
+     *
+     *  - Sample RTT is also being measured and used to adjust the transmission timeout. I'll leave the explanation as a TODO.
+     */
     fprintf(stderr, "log: sending file\n");
     do {
         while(!isFull(window) && (fileBufferLen = fread(fileBuffer, 1, MSS, file)) > 0) {
@@ -252,7 +281,16 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
     free(fileSegment);
     fclose(file);
 
+    // Create FIN segment
     fillTCPSegment(clientSegment, ackPort, udplPort, seqNum++, nextExpectedServerSeq, FIN_FLAG, NULL, 0);
+
+    /*
+     * Send FIN:
+     *  - Send FIN.
+     *  - Call recvfrom. If nothing is received within the timeout, increase it and repeat.
+     *  - If a segment is received, check that it is not corrupted, the ACK is for the next seq, and the ACK flag is set. If so, break from loop;
+     *    else, repeat.
+     */
     fprintf(stderr, "log: finished sending file, sending FIN\n");
     for(;;) {
         if(sendto(clientSocket, clientSegment, HEADER_LEN, 0, (struct sockaddr *)&udplAddr, sizeof(udplAddr)) != HEADER_LEN) {
@@ -281,6 +319,10 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         }
     }
 
+    /*
+     * Listen for FIN:
+     *  - Call recvfrom. If the received segment is not corrupt, has a seq that is the next expected one, and has its FIN flag set, then break from loop.
+     */
     fprintf(stderr, "log: received ACK for FIN, listening for FIN\n");
     for(;;) {
         serverSegmentLen = recvfrom(clientSocket, serverSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
@@ -295,9 +337,18 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         }
     }
 
+    // Create ACK for server's FIN
     fillTCPSegment(clientSegment, ackPort, udplPort, seqNum, nextExpectedServerSeq + 1, ACK_FLAG, NULL, 0);
-    int hasSeenFIN = 1;
+    int hasSeenFIN = 1;  // whether a FIN from the server has just been received
     remainingTimeout = (int)(FINAL_WAIT * SI_MICRO);
+
+    /*
+     * Send ACK:
+     *  - Send ACK.
+     *  - Call recvfrom. If nothing is received within the timeout, break from loop and terminate program (final timeout).
+     *  - If a segment is received, check that it is not corrupt, the seq is the next expected one, and the FIN flag is set. If so, resend the ACK.
+     *    Else, ignore.
+     */
     fprintf(stderr, "log: received FIN, sending ACK and waiting %.1f seconds\n", (float)FINAL_WAIT);
     for(;;) {
         if(hasSeenFIN) {
