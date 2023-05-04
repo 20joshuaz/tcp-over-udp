@@ -14,11 +14,11 @@
 #include "validators.h"
 
 #define ISN 0
-#define INITIAL_TIMEOUT 1
-#define TIMEOUT_MULTIPLIER 1.1
+#define INITIAL_TIMEOUT 1  // the initial timeout, in seconds
+#define TIMEOUT_MULTIPLIER 1.1  // the timeout multiplier when a timeout occurs
 #define ALPHA 0.125
 #define BETA 0.25
-#define FINAL_WAIT 3
+#define FINAL_WAIT 3  // how long the client waits after receiving an ACK for its FIN, in seconds
 
 void doNothing(int signum) {}
 
