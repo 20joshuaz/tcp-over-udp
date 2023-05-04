@@ -38,6 +38,8 @@ ACK segments do not increase the sequence number. This is specified in [RFC 761]
 - checksum: The checksum is computed using the method described in the textbook. Whenever the client or server receives a segment,
 the first thing it does is check whether the checksum agrees with the rest of the header fields.
 
+The fields are manipulated using bit operations.
+
 #### Retransmission Timer Adjustment
 Only the client performs retransmission timer adjustment since the server does not send enough non-ACK packets to warrant adjustments.
 When the client sends segments, it chooses one of them and begins a timer. If it receives an ACK for the selected segment, it 
