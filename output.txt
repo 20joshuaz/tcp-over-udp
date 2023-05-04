@@ -11,6 +11,7 @@ log: goodbye
 log: sending SYN
 log: received SYNACK, sending ACK
 log: sending file
+log: sent 5917719 bytes
 log: finished sending file, sending FIN
 log: received ACK for FIN, listening for FIN
 log: received FIN, sending ACK and waiting 3.0 seconds

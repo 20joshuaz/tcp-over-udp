@@ -31,7 +31,7 @@ To run the server, do
   - retransmission timer adjustment
   - logging
     - delivery, receipt, and timeouts during three-way handshake
-    - receipt during file transfer (logging delivery and timeouts would result in too many messages)
+    - delivery and receipt during file transfer (logging timeouts would result in too many messages)
     - delivery, receipt, and timeouts during connection teardown
 - The code works as is. You can adjust some variables by changing the `define` macros at the top of `tcpclient.c` and `tcpserver.c`.
 - The number of segments in the client's window is the inputted window size divided by (using integer division) the MSS.
