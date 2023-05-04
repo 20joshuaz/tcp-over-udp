@@ -116,6 +116,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         exit(1);
     }
     ssize_t clientDataLen;
+    uint32_t bytesReceived = 0;
 
     fprintf(stderr, "log: receiving file\n");
     for(;;) {
@@ -130,17 +131,14 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
                     break;
                 }
 
-                fprintf(stderr, "log: received expected seq %d\n", clientSegment->seqNum);
                 clientDataLen = clientSegmentLen - HEADER_LEN;
+                fprintf(stderr, "log: received %d bytes\r", (bytesReceived += clientDataLen));
                 if(fwrite(clientSegment->data, 1, clientDataLen, file) != clientDataLen) {
                     perror("failed to write to file");
                     fclose(file); free(serverSegment); free(clientSegment); close(serverSocket);
                     exit(1);
                 }
                 nextExpectedClientSeq += clientDataLen;
-            }
-            else {
-                // fprintf(stderr, "warning: received out-of-order seq %d\n", clientSegment->seqNum);
             }
 
             fillTCPSegment(serverSegment, listenPort, ackPort, ISN + 1, nextExpectedClientSeq, ACK_FLAG, NULL, 0);
@@ -152,9 +150,9 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         }
     }
 
+    fprintf(stderr, "\n");
     fclose(file);
 
-    // nextExpectedClientSeq;
     fillTCPSegment(serverSegment, listenPort, ackPort, ISN + 1, nextExpectedClientSeq + 1, ACK_FLAG, NULL, 0);
     fprintf(stderr, "log: received FIN, sending ACK\n");
     if(sendto(serverSocket, serverSegment, HEADER_LEN, 0, (struct sockaddr *)&ackAddr, sizeof(ackAddr)) != HEADER_LEN) {
