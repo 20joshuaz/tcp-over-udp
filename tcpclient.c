@@ -191,7 +191,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
         exit(1);
     }
 
-    struct itimerval itRemainingTimeout;
+    struct itimerval itRemainingTimeout;  // the remaining time in a timer, used to continue the timer
     memset(&itRemainingTimeout, 0, sizeof(itRemainingTimeout));
     setMicroTime(&itRemainingTimeout, timeout);
 

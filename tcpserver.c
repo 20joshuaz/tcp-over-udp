@@ -1,10 +1,12 @@
 #include <arpa/inet.h>
+#include <assert.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include "tcp.h"
@@ -66,6 +68,12 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
     uint32_t nextExpectedClientSeq;  // the next seq expected to be sent by the client (i.e., the ACK sent back to the client)
     int timeout = (int)(INITIAL_TIMEOUT * SI_MICRO);  // transmission timeout
 
+    struct itimerval itTimeout;
+    memset(&itTimeout, 0, sizeof(itTimeout));
+    setMicroTime(&itTimeout, timeout);
+    struct itimerval disarmer;
+    memset(&disarmer, 0, sizeof(disarmer));
+
     /*
      * Listen for SYN:
      *  - Call recvfrom.
@@ -108,12 +116,13 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         }
 
         errno = 0;
-        ualarm(timeout, 0);
+        setitimer(ITIMER_REAL, &itTimeout, NULL);
         clientSegmentLen = recvfrom(serverSocket, clientSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
-        ualarm(0, 0);
+        setitimer(ITIMER_REAL, &disarmer, NULL);
         if(errno == EINTR) {
             fprintf(stderr, "warning: failed to receive ACK\n");
             timeout = (int)(timeout * TIMEOUT_MULTIPLIER);
+            setMicroTime(&itTimeout, timeout);
             continue;
         }
         if(clientSegmentLen < 0) {
@@ -193,7 +202,10 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
     // Create FIN segment
     struct TCPSegment *finSegment = (struct TCPSegment *)malloc(sizeof(struct TCPSegment));
     fillTCPSegment(finSegment, listenPort, ackPort, ISN + 1, nextExpectedClientSeq + 1, FIN_FLAG, NULL, 0);
-    int remainingTimeout = timeout;  // the remaining time in a timer, used to continue the timer
+
+    struct itimerval itRemainingTimeout;  // the remaining time in a timer, used to continue the timer
+    memset(&itRemainingTimeout, 0, sizeof(itRemainingTimeout));
+    setMicroTime(&itRemainingTimeout, timeout);
 
     /*
      * Send FIN:
@@ -215,13 +227,13 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort) {
         }
 
         errno = 0;
-        ualarm(remainingTimeout, 0);
+        setitimer(ITIMER_REAL, &itRemainingTimeout, NULL);
         clientSegmentLen = recvfrom(serverSocket, clientSegment, sizeof(struct TCPSegment), 0, NULL, NULL);
-        remainingTimeout = (int)ualarm(0, 0);
-        if(!remainingTimeout || errno == EINTR) {
+        setitimer(ITIMER_REAL, &disarmer, &itRemainingTimeout);
+        if(!getMicroTime(&itRemainingTimeout) || errno == EINTR) {
             fprintf(stderr, "warning: failed to receive ACK\n");
             timeout = (int)(timeout * TIMEOUT_MULTIPLIER);
-            remainingTimeout = timeout;
+            setMicroTime(&itRemainingTimeout, timeout);
             continue;
         }
         if(clientSegmentLen < 0) {
