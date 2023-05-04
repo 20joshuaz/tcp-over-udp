@@ -199,12 +199,12 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 
     /*
      * Send file:
-     *  - Fill window with segments and send all segments.
+     *  - Fill window with segments and send all segments. Choose a segment and start a timer to measure its RTT.
      *  - Call recvfrom. If nothing is received within the timeout, increase the timeout and resend all segments in window.
+     *    Mark the timed segment's RTT as invalid.
      *  - If a segment is received, check if it is corrupted. If it is, then ignore it.
      *  - Else, check the segment's ACK. If it is in the window, shift the window up to the ACK.
-     *
-     *  - Sample RTT is also being measured and used to adjust the transmission timeout. I'll leave the explanation as a TODO.
+     *    - If the segment being timed is ACKed, then stop its timer and adjust the timeout based on the segment's RTT.
      */
     fprintf(stderr, "log: sending file\n");
     do {
