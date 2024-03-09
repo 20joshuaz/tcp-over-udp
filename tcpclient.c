@@ -154,7 +154,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 	fprintf(stderr, "log: received SYNACK, sending ACK\n");
 	if (sendto(clientSocket, &clientSegment, HEADER_LEN, 0,
 		(struct sockaddr *)&udplAddr, sizeof(udplAddr)) != HEADER_LEN) {
-		perror("perror");
+		perror("sendto");
 		goto fail;
 	}
 
@@ -178,7 +178,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 	size_t fileBufferLen;
 	struct Window *window = newWindow(windowSize / MSS);  // Window of segments that are in transit
 	if (!window) {
-		perror("failed to malloc");
+		perror("malloc");
 		close(fd);
 		goto fail;
 	}
@@ -423,7 +423,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 		serverSegmentLen = recvfrom(clientSocket, &serverSegment,
 			sizeof(struct TCPSegment), 0, NULL, NULL);
 		if (serverSegmentLen < 0) {
-			perror("failed to read from socket");
+			perror("recvfrom");
 			goto fail;
 		}
 
@@ -454,7 +454,7 @@ int main(int argc, char **argv)
 
 	char *fileStr = argv[1];
 	if (access(fileStr, F_OK) != 0) {
-		perror("failed to access file");
+		perror("access");
 		exit(1);
 	}
 	char *udplAddress = argv[2];
