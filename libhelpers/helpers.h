@@ -3,12 +3,14 @@
 
 #include <sys/time.h>
 
-#define SI_MICRO ((int)1e6)
+#define SI_MICRO 1000000
+
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 int isNumber(char *);
 int getPort(char *);
 int isValidIP(char *);
-int getMicroTime(struct itimerval *);
-void setMicroTime(struct itimerval *, int);
+int getMicroDiff(struct timeval *, struct timeval *);
+void setMicroTime(struct timeval *, int);
 
 #endif

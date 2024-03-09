@@ -63,18 +63,19 @@ int isValidIP(char *ip)
 }
 
 /*
- * Gets the number of microseconds from an itimerval's it_value field.
+ * Gets the number of microseconds between two timevals.
  */
-int getMicroTime(struct itimerval *it)
+int getMicroDiff(struct timeval *startTime, struct timeval *endTime)
 {
-	return it->it_value.tv_sec*SI_MICRO + it->it_value.tv_usec;
+	return (endTime->tv_sec - startTime->tv_sec)*SI_MICRO
+		+ (endTime->tv_usec - startTime->tv_usec);
 }
 
 /*
- * Sets an itimerval's it_value field to the specified number of microseconds.
+ * Sets a timeval's fields to the specified number of microseconds.
  */
-void setMicroTime(struct itimerval *it, int totalMicro)
+void setMicroTime(struct timeval *tv, int totalMicro)
 {
-	it->it_value.tv_sec = totalMicro / SI_MICRO;
-	it->it_value.tv_usec = totalMicro % SI_MICRO;
+	tv->tv_sec = totalMicro / SI_MICRO;
+	tv->tv_usec = totalMicro % SI_MICRO;
 }
