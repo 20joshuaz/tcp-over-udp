@@ -1,7 +1,9 @@
-### Program Design
-#### Client Walkthrough
+# Program Design
+
+## Workflows
+### Client Walkthrough
 The client initiates the three-way handshake. It keeps sending SYN segments until it receives a SYNACK from the server.
-The client sends an ACK back. These actions are implemented using the built-in socket and timer functions.
+The client sends an ACK back. These actions are implemented using the built-in socket, timer, and select functions.
 
 The client then creates a window (written by me and implemented as a queue). The window holds all the segments currently in transit (segments that
 have not been ACKed). The client opens the input file for reading and begins sending data until it fills the window. The client then
@@ -9,15 +11,15 @@ listens for an ACK. If the ACK number is greater than the lowest unACKed sequenc
 forward and sends more segments.
 
 If the client's timer goes off, then it sends all the segments in its window. I realize this is a Go-Back-N policy and not
-a TCP one, but it seems to work better for this project (see more details in the Design Tradeoffs section).
+a TCP one, but it seems to work better for this project (see more details in Design Tradeoffs).
 
 When the client is finished sending the file, it sends a FIN. It keeps sending the FIN segment until it receives an
 ACK. It then waits for a FIN from the server. When it receives one, it sends an ACK and starts a timer. The client
 ACKs back to any additional FIN segments. When the timer goes off, the client terminates the program.
 
-#### Server Walkthrough
+### Server Walkthrough
 When the program starts, the server waits and listens for a SYN segment. When it gets one, it responds with a SYNACK.
-It keeps sending SYNACK segments until it receives an ACK from the client. These actions are implemented using the built-in socket and timer functions.
+It keeps sending SYNACK segments until it receives an ACK from the client. These actions are implemented using the built-in socket, timer, and select functions.
 
 The server then open the output file for writing and listens for segments from the client. It keeps track of the next in-order sequence number.
 When it receives a segment, it checks whether the segment has this sequence number. If so, it writes the data to the output file.
@@ -27,9 +29,9 @@ the received segment was used or discarded.
 The server writes data until it receives a FIN. It then responds with an ACK and its own FIN. The server keeps sending this
 FIN until it receives an ACK. The program then terminates.
 
-### How It Works
-#### TCP Segment
-`tcp.h` contains `TCPSegment` struct that is used by the client and server. This struct contains TCP header fields and the
+## Implementation Details
+### TCP Segment
+`tcp.h` contains the `TCPSegment` struct that is used by the client and server. This struct contains TCP header fields and the
 segment's data. Some notable header fields are
 - seqNum: This indicates the sender's sequence number. It is incremented after SYN, FIN, and segments containing data are sent.
 ACK segments do not increase the sequence number. This is specified in [RFC 761](https://www.ietf.org/rfc/rfc761.html).
@@ -40,7 +42,7 @@ the first thing it does is check whether the checksum agrees with the rest of th
 
 The fields are manipulated using bit operations.
 
-#### Retransmission Timer Adjustment
+### Retransmission Timer Adjustment
 Only the client performs retransmission timer adjustment since the server does not send enough non-ACK packets to warrant adjustments.
 When the client sends segments, it chooses one of them and begins a timer. If it receives an ACK for the selected segment, it 
 stops the timer. The elapsed time is the sample RTT, which is used to adjust the retransmission timer. The adjustments are made
@@ -50,9 +52,9 @@ On the other hand, if the client is required to resend the selected segment, it 
 new segments to be sent to choose another segment to time.
 
 If the retransmission timer goes off, the client increases it and restarts it. While the textbook specifies doubling the timer,
-I increase it by just 10% (see more details in the Design Tradeoffs section). 
+I increase it by just 10% (see more details in Design Tradeoffs). 
 
-### Design Tradeoffs
+## Design Tradeoffs
 - The timeout multiplier (what is multiplied to the retransmission timer after a timeout) is set to 1.1. 
   - If it is set to 2 (as specified in the textbook), the file transfer sometimes stalls since the timeout increases too quickly.
 - When resending segments after a timeout, the client uses a Go-Back-N policy. It sends all segments in the window.
