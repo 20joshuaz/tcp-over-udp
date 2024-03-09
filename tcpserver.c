@@ -130,7 +130,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 	nextExpectedClientSeq++;
 
 	// Open file for writing
-	int fd = open(fileStr, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IRGRP | S_IROTH);
+	int fd = open(fileStr, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU);
 	if (fd < 0) {
 		perror("open");
 		exit(1);
