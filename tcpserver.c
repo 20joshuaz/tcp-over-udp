@@ -184,6 +184,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 	}
 
 	fprintf(stderr, "\n");
+	fsync(fd);
 	close(fd);
 
 	// Create and send ACK for client's FIN

@@ -473,6 +473,10 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 	int windowSize = (int)strtol(windowSizeStr, NULL, 10);
+	if (windowSize < MSS) {
+		fprintf(stderr, "error: window size must be at least %d\n", MSS);
+		exit(1);
+	}
 	int ackPort = getPort(argv[5]);
 	if (!ackPort) {
 		fprintf(stderr, "error: invalid ack port\n");
