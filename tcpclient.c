@@ -75,12 +75,13 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 
 	// clientSegment holds segments created by the client.
 	// serverSegment holds segments received from the server.
-	struct TCPSegment clientSegment;
-	struct TCPSegment serverSegment;
+	struct TCPSegment clientSegment, serverSegment;
 	ssize_t serverSegmentLen;  // Amount of data in serverSegment
 	int timeoutMicros = INITIAL_TIMEOUT * SI_MICRO;  // Transmission timeout
+	int timeRemaining = timeoutMicros;
+	int timeElapsed;
 	int isSampleRTTBeingMeasured;  // Whether a segment's sample RTT is being measured
-	struct timeval startTime, endTime;
+	struct timeval absoluteStartTime, startTime, endTime;
 	int estimatedRTT = -1;
 	int devRTT;
 
@@ -104,7 +105,7 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 	 *  - Else, ignore and repeat.
 	 */
 	fprintf(stderr, "log: sending SYN\n");
-	gettimeofday(&startTime, NULL);
+	gettimeofday(&absoluteStartTime, NULL);
 	for (;;) {
 		if (sendto(clientSocket, &clientSegment, HEADER_LEN, 0,
 			(struct sockaddr *)&udplAddr, sizeof(udplAddr)) != HEADER_LEN) {
@@ -115,7 +116,8 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 		FD_ZERO(&readFds);
 		FD_SET(clientSocket, &readFds);
 		timeout = (struct timeval){ 0 };
-		setMicroTime(&timeout, timeoutMicros);
+		setMicroTime(&timeout, timeRemaining);
+		gettimeofday(&startTime, NULL);
 		fdsReady = select(clientSocket + 1, &readFds, NULL, NULL, &timeout);
 		gettimeofday(&endTime, NULL);
 		if (fdsReady < 0) {
@@ -125,7 +127,7 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 			// Timed out
 			fprintf(stderr, "warning: failed to receive SYNACK\n");
 			isSampleRTTBeingMeasured = 0;
-			timeoutMicros = (int)(timeoutMicros * TIMEOUT_MULTIPLIER);
+			timeRemaining = timeoutMicros = (int)(timeoutMicros * TIMEOUT_MULTIPLIER);
 			continue;
 		}
 
@@ -141,11 +143,14 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 		if (isChecksumValid(&serverSegment) && serverSegment.ackNum == ISN + 1
 			&& isFlagSet(&serverSegment, SYN_FLAG | ACK_FLAG)) {
 			if (isSampleRTTBeingMeasured) {
-				updateRTTAndTimeout(getMicroDiff(&startTime, &endTime),
+				updateRTTAndTimeout(getMicroDiff(&absoluteStartTime, &endTime),
 					&estimatedRTT, &devRTT, &timeoutMicros, ALPHA, BETA);
 			}
 			break;
 		}
+
+		timeElapsed = getMicroDiff(&startTime, &endTime);
+		timeRemaining = MAX(timeRemaining - timeElapsed, 0);
 	}
 
 	uint32_t nextExpectedServerSeq = serverSegment.seqNum + 1;
@@ -186,8 +191,7 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 		goto fail;
 	}
 
-	struct timeval iterStartTime;  // Iteration-specific start time
-	int timeRemaining = timeoutMicros;
+	timeRemaining = timeoutMicros;
 
 	/*
 	 * Send file:
@@ -214,7 +218,7 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 			if (!isSampleRTTBeingMeasured) {
 				isSampleRTTBeingMeasured = 1;
 				seqNumBeingTimed = seqNum;
-				gettimeofday(&startTime, NULL);
+				gettimeofday(&absoluteStartTime, NULL);
 			}
 
 			seqNum += fileSegment.dataLen;
@@ -239,7 +243,7 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 		FD_SET(clientSocket, &readFds);
 		timeout = (struct timeval){ 0 };
 		setMicroTime(&timeout, timeRemaining);
-		gettimeofday(&iterStartTime, NULL);
+		gettimeofday(&startTime, NULL);
 		fdsReady = select(clientSocket + 1, &readFds, NULL, NULL, &timeout);
 		gettimeofday(&endTime, NULL);
 		if (fdsReady < 0 ) {
@@ -248,8 +252,7 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 			close(fd);
 			goto fail;
 		} else if (fdsReady == 0) {
-			timeoutMicros = (int)(timeoutMicros * TIMEOUT_MULTIPLIER);
-			timeRemaining = timeoutMicros;
+			timeRemaining = timeoutMicros = (int)(timeoutMicros * TIMEOUT_MULTIPLIER);
 
 			int currIndex = window->startIndex;
 			struct TCPSegmentEntry *segmentInWindow;
@@ -292,7 +295,7 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 
 				if (isSampleRTTBeingMeasured && !isEmpty(window)
 					&& seqNumBeingTimed < ntohl(window->arr[window->startIndex].segment.seqNum)) {
-					updateRTTAndTimeout(getMicroDiff(&startTime, &endTime),
+					updateRTTAndTimeout(getMicroDiff(&absoluteStartTime, &endTime),
 						&estimatedRTT, &devRTT, &timeoutMicros, ALPHA, BETA);
 					isSampleRTTBeingMeasured = 0;
 				}
@@ -312,7 +315,7 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 			// else ACK out of range
 		}
 		if (resumeTimer) {
-			const int timeElapsed = getMicroDiff(&iterStartTime, &endTime);
+			timeElapsed = getMicroDiff(&startTime, &endTime);
 			timeRemaining = MAX(timeRemaining - timeElapsed, 0);
 		}
 	} while (!isEmpty(window));
@@ -325,6 +328,8 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 	fillTCPSegment(&clientSegment, ackPort, udplPort, seqNum++,
 		nextExpectedServerSeq, FIN_FLAG, NULL, 0);
 	convertTCPSegment(&clientSegment, 1);
+
+	timeRemaining = timeoutMicros;
 
 	/*
 	 * Send FIN:
@@ -344,14 +349,16 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 		FD_ZERO(&readFds);
 		FD_SET(clientSocket, &readFds);
 		timeout = (struct timeval){ 0 };
-		setMicroTime(&timeout, timeoutMicros);
+		gettimeofday(&startTime, NULL);
+		setMicroTime(&timeout, timeRemaining);
+		gettimeofday(&endTime, NULL);
 		fdsReady = select(clientSocket + 1, &readFds, NULL, NULL, &timeout);
 		if (fdsReady < 0) {
 			perror("select");
 			goto fail;
 		} else if (fdsReady == 0) {
 			fprintf(stderr, "warning: failed to receive ACK for FIN\n");
-			timeoutMicros = (int)(timeoutMicros * TIMEOUT_MULTIPLIER);
+			timeRemaining = timeoutMicros = (int)(timeoutMicros * TIMEOUT_MULTIPLIER);
 			continue;
 		}
 
@@ -368,6 +375,9 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 			&& isFlagSet(&serverSegment, ACK_FLAG)) {
 			break;
 		}
+
+		timeElapsed = getMicroDiff(&startTime, &endTime);
+		timeRemaining = MAX(timeRemaining - timeElapsed, 0);
 	}
 
 	/*
@@ -444,7 +454,7 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 			hasSeenFIN = 1;
 		}
 
-		const int timeElapsed = getMicroDiff(&startTime, &endTime);
+		timeElapsed = getMicroDiff(&startTime, &endTime);
 		timeRemaining = MAX(timeRemaining - timeElapsed, 0);
 	}
 
@@ -460,7 +470,7 @@ fail:
 int main(int argc, char **argv)
 {
 	if (argc != 6) {
-		fprintf(stderr, "usage: tcpclient <file> <address of udpl> <port of udpl> <window size> <ack port>\n");
+		fprintf(stderr, "usage: tcpclient <file> <udpl address> <udpl port> <window size> <ack port>\n");
 		exit(1);
 	}
 

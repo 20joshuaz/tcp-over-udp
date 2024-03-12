@@ -81,7 +81,9 @@ int runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 	convertTCPSegment(&serverSegment, 1);
 
 	int timeoutMicros = INITIAL_TIMEOUT * SI_MICRO;  // transmission timeout
-	struct timeval timeout;
+	int timeRemaining = timeoutMicros;
+	int timeElapsed;
+	struct timeval timeout, startTime, endTime;
 	fd_set readFds;
 	int fdsReady;
 
@@ -103,15 +105,17 @@ int runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 		FD_ZERO(&readFds);
 		FD_SET(serverSocket, &readFds);
 		timeout = (struct timeval){ 0 };
-		setMicroTime(&timeout, timeoutMicros);
+		setMicroTime(&timeout, timeRemaining);
+		gettimeofday(&startTime, NULL);
 		fdsReady = select(serverSocket + 1, &readFds, NULL, NULL, &timeout);
+		gettimeofday(&endTime, NULL);
 		if (fdsReady < 0) {
 			perror("select");
 			goto fail;
 		} else if (fdsReady == 0) {
 			// Timed out
 			fprintf(stderr, "warning: failed to receive ACK for SYNACK\n");
-			timeoutMicros = (int)(timeoutMicros * TIMEOUT_MULTIPLIER);
+			timeRemaining = timeoutMicros = (int)(timeoutMicros * TIMEOUT_MULTIPLIER);
 			continue;
 		}
 
@@ -128,6 +132,9 @@ int runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 			&& isFlagSet(&clientSegment, ACK_FLAG)) {
 			break;
 		}
+
+		timeElapsed = getMicroDiff(&startTime, &endTime);
+		timeRemaining = MAX(timeRemaining - timeElapsed, 0);
 	}
 
 	nextExpectedClientSeq++;
@@ -209,8 +216,7 @@ int runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 		nextExpectedClientSeq + 1, FIN_FLAG, NULL, 0);
 	convertTCPSegment(&finSegment, 1);
 
-	struct timeval startTime, endTime;
-	int timeRemaining = timeoutMicros;
+	timeRemaining = timeoutMicros;
 
 	/*
 	 * Send FIN:
@@ -243,7 +249,7 @@ int runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 			goto fail;
 		} else if (fdsReady == 0) {
 			fprintf(stderr, "warning: failed to receive ACK for FIN\n");
-			timeoutMicros = (int)(timeoutMicros * TIMEOUT_MULTIPLIER);
+			timeRemaining = timeoutMicros = (int)(timeoutMicros * TIMEOUT_MULTIPLIER);
 			continue;
 		}
 
@@ -269,7 +275,7 @@ int runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 			}
 		}
 
-		const int timeElapsed = getMicroDiff(&startTime, &endTime);
+		timeElapsed = getMicroDiff(&startTime, &endTime);
 		timeRemaining = MAX(timeRemaining - timeElapsed, 0);
 	}
 

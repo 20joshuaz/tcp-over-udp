@@ -1,7 +1,7 @@
 # CSEE 4119 PA2: Simplified TCP over UDP
 Joshua Zhou, jz3311
 
-This project was a programming assignment for my Networks class. See `Programming Assignment 2.pdf` for the spec.
+This project was a programming assignment for my Networks class. See [Programming Assignment 2](https://github.com/20joshuaz/tcp-over-udp/blob/main/Programming%20Assignment%202.pdf) for the spec.
 
 ## How to run
 First, create the library files by running `make` in `libtcp` and `libhelpers`.
@@ -29,12 +29,12 @@ make
 
 To run the client, do
 ```
-./tcpclient file udpl_address udpl_port window_size ack_port
+./tcpclient <file> <udpl address> <udpl port> <window size> <ack port>
 ```
 
 To run the server, do
 ```
-./tcpserver file listening_port ack_address ack_port
+./tcpserver <file> <listening port> <ack address> <ack port>
 ```
 
 An example of a valid run is
