@@ -23,7 +23,7 @@ struct TCPSegment {
 	uint16_t urgentPtr;
 
 	char data[MSS];
-} __attribute__((packed));
+};
 
 static_assert(sizeof(struct TCPSegment) == HEADER_LEN + MSS,
 	"TCPSegment struct not packed");
