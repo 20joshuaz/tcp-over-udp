@@ -4,7 +4,9 @@ Joshua Zhou, jz3311
 This project was a programming assignment for my Networks class. See [Programming Assignment 2](https://github.com/20joshuaz/tcp-over-udp/blob/main/Programming%20Assignment%202.pdf) for the spec.
 
 ## How to run
-First, create the library files by running `make` in `libtcp` and `libhelpers`.
+All code is located in `src`. cd into this directory.
+
+Create the library files by running `make` in `libtcp` and `libhelpers`.
 
 The top-level Makefile generates executables for the client and server.
 ```
@@ -12,7 +14,7 @@ make
 ```
 
 Package loss is simulated using `newudpl`. See more details [here](http://www.cs.columbia.edu/~hgs/research/projects/newudpl/newudpl-1.4/newudpl.html).
-An executable is included in the repo. To run it, do
+An executable is included in the directory. To run it, do
 
 ```
 ./newudpl [-p recv_port:send_port] [-i source_address] [-o destination_address] [-vv] [-L loss_rate]
@@ -46,10 +48,14 @@ An example of a valid run is
 ```
 
 ## Project Files
-- `tcpclient.c` and `tcpserver.c` contain code for the client and server
-- `libhelpers/helpers.h` contains validators for input checking
-- `libtcp/tcp.h` defines a TCP segment and functions for operating on it
-- `libtcp/window.h` defines a window of TCP segments and functions for operating on it
+- `src`
+  - `tcpclient.c` contains client logic
+  - `tcpserver.c` contains server logic
+  - `libhelpers`
+    - `helpers.h` contains helper functions for input checking and time operations
+  - `libtcp`
+    - `tcp.h` defines a TCP segment and functions for operating on it
+    - `window.h` defines a window of TCP segments and functions for operating on it
 - `DESIGN.md` describes the project's design
 - `output.txt` shows a sample client-server interaction
   - Note that the client and server are capable of more types of logging than what is shown
@@ -73,3 +79,4 @@ An example of a valid run is
 
 ## Testing Environment
 - Works on my M1 Mac and a VM running Ubuntu
+  - `static_assert` (used in `libtcp/tcp.h` to ensure packed struct) requires at least C11
