@@ -1,7 +1,7 @@
 # CSEE 4119 PA2: Simplified TCP over UDP
 Joshua Zhou, jz3311
 
-This project was a programming assignment for my Networks class. See [Programming Assignment 2](https://github.com/20joshuaz/tcp-over-udp/blob/main/Programming%20Assignment%202.pdf) for the spec.
+This project was a programming assignment for my Networks class (Spring 2023). See [Programming Assignment 2](https://github.com/20joshuaz/tcp-over-udp/blob/main/Programming%20Assignment%202.pdf) for the spec.
 
 ## How to run
 All code is located in `src`. cd into this directory.
