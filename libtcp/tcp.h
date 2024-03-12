@@ -1,6 +1,7 @@
 #ifndef TCP_H
 #define TCP_H
 
+#include <assert.h>
 #include <stdint.h>
 
 #define HEADER_LEN 20
@@ -22,13 +23,16 @@ struct TCPSegment {
 	uint16_t urgentPtr;
 
 	char data[MSS];
-	int dataLen;
-};
+} __attribute__((packed));
+
+static_assert(sizeof(struct TCPSegment) == HEADER_LEN + MSS,
+	"TCPSegment struct not packed");
 
 uint16_t calculateSumOfHeaderWords(struct TCPSegment *);
 int isFlagSet(struct TCPSegment *, uint8_t);
 void fillTCPSegment(struct TCPSegment *, uint16_t, uint16_t,
-                    uint32_t, uint32_t, uint8_t, char *, int);
+	uint32_t, uint32_t, uint8_t, char *, int);
+void convertTCPSegment(struct TCPSegment *, int);
 int isChecksumValid(struct TCPSegment *);
 void printTCPHeader(struct TCPSegment *);
 

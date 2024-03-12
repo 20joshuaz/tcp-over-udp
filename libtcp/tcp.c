@@ -1,3 +1,4 @@
+#include <arpa/inet.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -81,7 +82,7 @@ int isFlagSet(struct TCPSegment *segment, uint8_t flag)
  * Fills a TCP segment.
  */
 void fillTCPSegment(struct TCPSegment *segment, uint16_t sourcePort, uint16_t destPort,
-        uint32_t seqNum, uint32_t ackNum, uint8_t flags, char *data, int dataLen)
+	uint32_t seqNum, uint32_t ackNum, uint8_t flags, char *data, int dataLen)
 {
 	segment->sourcePort = sourcePort;
 	segment->destPort = destPort;
@@ -97,7 +98,32 @@ void fillTCPSegment(struct TCPSegment *segment, uint16_t sourcePort, uint16_t de
 	segment->checksum = ~checksum;
 
 	memcpy(segment->data, data, dataLen);
-	segment->dataLen = dataLen;
+}
+
+/*
+ * Converts a TCP segment to network or host byte order.
+ */
+void convertTCPSegment(struct TCPSegment *segment, int toNetwork)
+{
+	if (toNetwork) {
+		segment->sourcePort = htons(segment->sourcePort);
+		segment->destPort = htons(segment->destPort);
+		segment->seqNum = htonl(segment->seqNum);
+		segment->ackNum = htonl(segment->ackNum);
+		// length and flags not endian-specific
+		segment->recvWindow = htons(segment->recvWindow);
+		segment->checksum = htons(segment->checksum);
+		segment->urgentPtr = htons(segment->urgentPtr);
+	} else {
+		segment->sourcePort = ntohs(segment->sourcePort);
+		segment->destPort = ntohs(segment->destPort);
+		segment->seqNum = ntohl(segment->seqNum);
+		segment->ackNum = ntohl(segment->ackNum);
+		// length and flags not endian-specific
+		segment->recvWindow = ntohs(segment->recvWindow);
+		segment->checksum = ntohs(segment->checksum);
+		segment->urgentPtr = ntohs(segment->urgentPtr);
+	}
 }
 
 /*

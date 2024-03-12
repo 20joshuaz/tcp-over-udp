@@ -47,7 +47,7 @@ void updateRTTAndTimeout(int sampleRTT, int *estimatedRTTPtr, int *devRTTPtr,
 	*timeoutPtr = (int)newTimeout;
 }
 
-void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, int ackPort)
+int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, int ackPort)
 {
 	// Create socket
 	int clientSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -86,6 +86,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 
 	// Create SYN segment
 	fillTCPSegment(&clientSegment, ackPort, udplPort, ISN, 0, SYN_FLAG, NULL, 0);
+	convertTCPSegment(&clientSegment, 1);
 	isSampleRTTBeingMeasured = 1;  // SYN segment's sample RTT will be measured
 
 	struct timeval timeout;
@@ -136,6 +137,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 			goto fail;
 		}
 
+		convertTCPSegment(&serverSegment, 0);
 		if (isChecksumValid(&serverSegment) && serverSegment.ackNum == ISN + 1
 			&& isFlagSet(&serverSegment, SYN_FLAG | ACK_FLAG)) {
 			if (isSampleRTTBeingMeasured) {
@@ -151,6 +153,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 	// Create and send ACK for server's SYNACK
 	fillTCPSegment(&clientSegment, ackPort, udplPort, ISN + 1,
 		nextExpectedServerSeq, ACK_FLAG, NULL, 0);
+	convertTCPSegment(&clientSegment, 1);
 	fprintf(stderr, "log: received SYNACK, sending ACK\n");
 	if (sendto(clientSocket, &clientSegment, HEADER_LEN, 0,
 		(struct sockaddr *)&udplAddr, sizeof(udplAddr)) != HEADER_LEN) {
@@ -172,7 +175,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 	}
 
 	// fileSegment contains TCP segments with data from the file
-	struct TCPSegment fileSegment;
+	struct TCPSegmentEntry fileSegment;
 	int fileSegmentLen;  // Amount of data in fileSegment
 	char fileBuffer[MSS];
 	size_t fileBufferLen;
@@ -201,9 +204,12 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 	fprintf(stderr, "log: sending file\n");
 	do {
 		while (!isFull(window) && (fileBufferLen = read(fd, fileBuffer, MSS)) > 0) {
-			fillTCPSegment(&fileSegment, ackPort, udplPort, seqNum,
+			fillTCPSegment((struct TCPSegment *)&fileSegment, ackPort, udplPort, seqNum,
 				nextExpectedServerSeq, 0, fileBuffer, fileBufferLen);
-			fileSegmentLen = HEADER_LEN + fileSegment.dataLen;
+			// Store segments in network byte order
+			convertTCPSegment((struct TCPSegment *)&fileSegment, 1);
+			fileSegment.dataLen = fileBufferLen;
+			fileSegmentLen = HEADER_LEN + fileBufferLen;
 			offer(window, &fileSegment);
 			if (!isSampleRTTBeingMeasured) {
 				isSampleRTTBeingMeasured = 1;
@@ -246,7 +252,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 			timeRemaining = timeoutMicros;
 
 			int currIndex = window->startIndex;
-			struct TCPSegment *segmentInWindow;
+			struct TCPSegmentEntry *segmentInWindow;
 			int segmentInWindowLen;
 			do {
 				segmentInWindow = window->arr + currIndex;
@@ -273,17 +279,19 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 			goto fail;
 		}
 
+		convertTCPSegment(&serverSegment, 0);
 		int resumeTimer = 1;
 		if (isChecksumValid(&serverSegment)) {
 			const uint32_t serverACKNum = serverSegment.ackNum;
-			if (serverACKNum > window->arr[window->startIndex].seqNum
+			if (serverACKNum > ntohl(window->arr[window->startIndex].segment.seqNum)
 				&& isFlagSet(&serverSegment, ACK_FLAG)) {
 				// isEmpty(window) || window->arr[window->startIndex].seqNum == serverACKNum
-				for ( ; !isEmpty(window) && window->arr[window->startIndex].seqNum != serverACKNum;
+				for ( ; !isEmpty(window)
+					&& ntohl(window->arr[window->startIndex].segment.seqNum) != serverACKNum;
 					deleteHead(window));
 
 				if (isSampleRTTBeingMeasured && !isEmpty(window)
-					&& seqNumBeingTimed < window->arr[window->startIndex].seqNum) {
+					&& seqNumBeingTimed < ntohl(window->arr[window->startIndex].segment.seqNum)) {
 					updateRTTAndTimeout(getMicroDiff(&startTime, &endTime),
 						&estimatedRTT, &devRTT, &timeoutMicros, ALPHA, BETA);
 					isSampleRTTBeingMeasured = 0;
@@ -316,6 +324,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 	// Create FIN segment
 	fillTCPSegment(&clientSegment, ackPort, udplPort, seqNum++,
 		nextExpectedServerSeq, FIN_FLAG, NULL, 0);
+	convertTCPSegment(&clientSegment, 1);
 
 	/*
 	 * Send FIN:
@@ -354,6 +363,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 			goto fail;
 		}
 
+		convertTCPSegment(&serverSegment, 0);
 		if (isChecksumValid(&serverSegment) && serverSegment.ackNum == seqNum
 			&& isFlagSet(&serverSegment, ACK_FLAG)) {
 			break;
@@ -374,6 +384,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 			goto fail;
 		}
 
+		convertTCPSegment(&serverSegment, 0);
 		if (isChecksumValid(&serverSegment) && serverSegment.seqNum == nextExpectedServerSeq
 			&& isFlagSet(&serverSegment, FIN_FLAG)) {
 			break;
@@ -383,8 +394,8 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 	// Create ACK for server's FIN
 	fillTCPSegment(&clientSegment, ackPort, udplPort, seqNum,
 		nextExpectedServerSeq + 1, ACK_FLAG, NULL, 0);
+	convertTCPSegment(&clientSegment, 1);
 	int hasSeenFIN = 1;  // Whether a FIN from the server has just been received
-	// setMicroTime(&itRemainingTimeout, (int)(FINAL_WAIT * SI_MICRO));
 	timeRemaining = (int)(FINAL_WAIT * SI_MICRO);
 
 	/*
@@ -427,6 +438,7 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 			goto fail;
 		}
 
+		convertTCPSegment(&serverSegment, 0);
 		if (isChecksumValid(&serverSegment) && serverSegment.seqNum == nextExpectedServerSeq
 			&& isFlagSet(&serverSegment, FIN_FLAG)) {
 			hasSeenFIN = 1;
@@ -438,11 +450,11 @@ void runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, i
 
 	close(clientSocket);
 	fprintf(stderr, "log: goodbye\n");
-	return;
+	return 0;
 
 fail:
 	close(clientSocket);
-	exit(1);
+	return 1;
 }
 
 int main(int argc, char **argv)
@@ -483,5 +495,5 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	runClient(fileStr, udplAddress, udplPort, windowSize, ackPort);
+	return runClient(fileStr, udplAddress, udplPort, windowSize, ackPort);
 }

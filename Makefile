@@ -3,8 +3,8 @@ CFLAGS=-g -Wall -Ilibtcp -Ilibhelpers
 LDFLAGS=-Llibtcp -Llibhelpers
 LDLIBS=-ltcp -lhelpers
 
-.PHONY: all
-all: tcpclient tcpserver
+.PHONY: tcp
+tcp: tcpclient tcpserver
 
 tcpclient:
 
@@ -17,3 +17,6 @@ tcpserver.o:
 .PHONY: clean
 clean:
 	rm -rf *.o tcpserver tcpclient
+
+.PHONY: all
+all: clean tcp

@@ -19,7 +19,7 @@
 #define ALPHA 0.125
 #define BETA 0.25
 
-void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
+int runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 {
 	// Create socket
 	int serverSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -66,6 +66,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 			goto fail;
 		}
 
+		convertTCPSegment(&clientSegment, 0);
 		if (isChecksumValid(&clientSegment) && isFlagSet(&clientSegment, SYN_FLAG)) {
 			break;
 		}
@@ -77,6 +78,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 	// Create SYNACK segment
 	fillTCPSegment(&serverSegment, listenPort, ackPort, ISN,
 		nextExpectedClientSeq, SYN_FLAG | ACK_FLAG, NULL, 0);
+	convertTCPSegment(&serverSegment, 1);
 
 	int timeoutMicros = INITIAL_TIMEOUT * SI_MICRO;  // transmission timeout
 	struct timeval timeout;
@@ -121,6 +123,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 			goto fail;
 		}
 
+		convertTCPSegment(&clientSegment, 0);
 		if (isChecksumValid(&clientSegment) && clientSegment.ackNum == ISN + 1
 			&& isFlagSet(&clientSegment, ACK_FLAG)) {
 			break;
@@ -156,6 +159,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 			close(fd);
 			goto fail;
 		}
+		convertTCPSegment(&clientSegment, 0);
 		if (isChecksumValid(&clientSegment)) {
 			if (clientSegment.seqNum == nextExpectedClientSeq) {
 				if (isFlagSet(&clientSegment, FIN_FLAG)) {
@@ -174,6 +178,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 
 			fillTCPSegment(&serverSegment, listenPort, ackPort, ISN + 1,
 				nextExpectedClientSeq, ACK_FLAG, NULL, 0);
+			convertTCPSegment(&serverSegment, 1);
 			if (sendto(serverSocket, &serverSegment, HEADER_LEN, 0,
 				(struct sockaddr *)&ackAddr, sizeof(ackAddr)) != HEADER_LEN) {
 				perror("sendto");
@@ -190,6 +195,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 	// Create and send ACK for client's FIN
 	fillTCPSegment(&serverSegment, listenPort, ackPort, ISN + 1,
 		nextExpectedClientSeq + 1, ACK_FLAG, NULL, 0);
+	convertTCPSegment(&serverSegment, 1);
 	fprintf(stderr, "log: received FIN, sending ACK\n");
 	if (sendto(serverSocket, &serverSegment, HEADER_LEN, 0,
 		(struct sockaddr *)&ackAddr, sizeof(ackAddr)) != HEADER_LEN) {
@@ -201,6 +207,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 	struct TCPSegment finSegment;
 	fillTCPSegment(&finSegment, listenPort, ackPort, ISN + 1,
 		nextExpectedClientSeq + 1, FIN_FLAG, NULL, 0);
+	convertTCPSegment(&finSegment, 1);
 
 	struct timeval startTime, endTime;
 	int timeRemaining = timeoutMicros;
@@ -248,6 +255,7 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 			goto fail;
 		}
 
+		convertTCPSegment(&clientSegment, 0);
 		if (isChecksumValid(&clientSegment)) {
 			if (clientSegment.ackNum == ISN + 2 && isFlagSet(&clientSegment, ACK_FLAG)) {
 				break;
@@ -267,11 +275,11 @@ void runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 
 	close(serverSocket);
 	fprintf(stderr, "log: goodbye\n");
-	return;
+	return 0;
 
 fail:
 	close(serverSocket);
-	exit(1);
+	return 1;
 }
 
 int main(int argc, char **argv)
@@ -298,5 +306,5 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	runServer(fileStr, listenPort, ackAddress, ackPort);
+	return runServer(fileStr, listenPort, ackAddress, ackPort);
 }

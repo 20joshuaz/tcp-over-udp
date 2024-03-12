@@ -8,7 +8,7 @@
  */
 struct Window *newWindow(int capacity)
 {
-	struct TCPSegment *arr = malloc(capacity * sizeof(struct TCPSegment));
+	struct TCPSegmentEntry *arr = malloc(capacity * sizeof(struct TCPSegmentEntry));
 	if (!arr) {
 		return NULL;
 	}
@@ -57,14 +57,14 @@ int next(struct Window *window, int index)
 }
 
 /*
- * Offer a TCP segment to the window.
+ * Offer a TCP segment entry to the window.
  */
-void offer(struct Window *window, struct TCPSegment *segment)
+void offer(struct Window *window, struct TCPSegmentEntry *entry)
 {
 	if (isFull(window)) {
 		return;
 	}
-	memcpy(window->arr + window->endIndex, segment, sizeof(struct TCPSegment));
+	memcpy(window->arr + window->endIndex, entry, sizeof(struct TCPSegmentEntry));
 	window->endIndex = next(window, window->endIndex);
 	window->length++;
 }
