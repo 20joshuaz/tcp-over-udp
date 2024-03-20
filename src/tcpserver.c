@@ -25,7 +25,7 @@ int runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 	int serverSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (serverSocket < 0) {
 		perror("socket");
-		exit(1);
+		return 1;
 	}
 
 	// Bind socket to listenPort
@@ -143,7 +143,7 @@ int runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 	int fd = open(fileStr, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU);
 	if (fd < 0) {
 		perror("open");
-		exit(1);
+		return 1;
 	}
 	ssize_t clientDataLen;  // amount of data excluding the TCP header
 	uint32_t bytesReceived = 0;  // the number of bytes received, used for logging
@@ -292,24 +292,24 @@ int main(int argc, char **argv)
 {
 	if (argc != 5) {
 		fprintf(stderr, "usage: tcpserver <file> <listening port> <ack address> <ack port>\n");
-		exit(1);
+		return 1;
 	}
 
 	char *fileStr = argv[1];
 	int listenPort = getPort(argv[2]);
 	if (!listenPort) {
 		fprintf(stderr, "error: invalid listening port\n");
-		exit(1);
+		return 1;
 	}
 	char *ackAddress = argv[3];
 	if (!isValidIP(ackAddress)) {
 		fprintf(stderr, "error: invalid ack address\n");
-		exit(1);
+		return 1;
 	}
 	int ackPort = getPort(argv[4]);
 	if (!ackPort) {
 		fprintf(stderr, "error: invalid ack port\n");
-		exit(1);
+		return 1;
 	}
 
 	return runServer(fileStr, listenPort, ackAddress, ackPort);

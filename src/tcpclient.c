@@ -53,7 +53,7 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 	int clientSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (clientSocket < 0) {
 		perror("socket");
-		exit(1);
+		return 1;
 	}
 
 	// Bind socket to ackPort
@@ -471,38 +471,38 @@ int main(int argc, char **argv)
 {
 	if (argc != 6) {
 		fprintf(stderr, "usage: tcpclient <file> <udpl address> <udpl port> <window size> <ack port>\n");
-		exit(1);
+		return 1;
 	}
 
 	char *fileStr = argv[1];
 	if (access(fileStr, F_OK) != 0) {
 		perror("access");
-		exit(1);
+		return 1;
 	}
 	char *udplAddress = argv[2];
 	if (!isValidIP(udplAddress)) {
 		fprintf(stderr, "error: invalid udpl address\n");
-		exit(1);
+		return 1;
 	}
 	int udplPort = getPort(argv[3]);
 	if (!udplPort) {
 		fprintf(stderr, "error: invalid udpl port\n");
-		exit(1);
+		return 1;
 	}
 	char *windowSizeStr = argv[4];
 	if (!isNumber(windowSizeStr)) {
 		fprintf(stderr, "error: invalid window size\n");
-		exit(1);
+		return 1;
 	}
 	int windowSize = (int)strtol(windowSizeStr, NULL, 10);
 	if (windowSize < MSS) {
 		fprintf(stderr, "error: window size must be at least %d\n", MSS);
-		exit(1);
+		return 1;
 	}
 	int ackPort = getPort(argv[5]);
 	if (!ackPort) {
 		fprintf(stderr, "error: invalid ack port\n");
-		exit(1);
+		return 1;
 	}
 
 	return runClient(fileStr, udplAddress, udplPort, windowSize, ackPort);
