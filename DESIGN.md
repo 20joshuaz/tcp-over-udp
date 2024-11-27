@@ -36,7 +36,7 @@ segment's data. Some notable header fields are
 - seqNum: This indicates the sender's sequence number. It is incremented after SYN, FIN, and segments containing data are sent.
 ACK segments do not increase the sequence number. This is specified in [RFC 761](https://www.ietf.org/rfc/rfc761.html).
 - ackNum: This indicates what the sender expects the next sequence number from the receiver to be. ACKs are cumulative.
-- flags: This can be set to indicate a SYN, FIN, and/or ACK segment.
+- flags: This can be set to indicate a SYN, FIN, and/or ACK segment
 - checksum: The checksum is computed using the method described in the textbook. Whenever the client or server receives a segment,
 the first thing it does is check whether the checksum agrees with the rest of the header fields.
 
@@ -55,11 +55,11 @@ If the retransmission timer goes off, the client increases it and restarts it. W
 I increase it by just 10% (see more details in Design Tradeoffs). 
 
 ## Design Tradeoffs
-- The timeout multiplier (what is multiplied to the retransmission timer after a timeout) is set to 1.1. 
-  - If it is set to 2 (as specified in the textbook), the file transfer sometimes stalls since the timeout increases too quickly.
+- The timeout multiplier (what is multiplied to the retransmission timer after a timeout) is set to 1.1
+  - If it is set to 2 (as specified in the textbook), the file transfer sometimes stalls since the timeout increases too quickly
 - When resending segments after a timeout, the client uses a Go-Back-N policy. It sends all segments in the window.
-  - GBN works better for this project since the server does not have a buffer for storing out-of-order segments. 
-  - I tried using the TCP retransmission policy, and while it still successfully performed reliable delivery, once one segment timed out, all future segments also timed out.
-  - Sequence and ACK numbers are still based on the TCP policy.
-- After receiving a FIN from the server, the client waits for 3 seconds before terminating.
-  - This is a lot shorter than the textbook's 30 seconds, but I don't want to keep you waiting.
+  - GBN works better for this project since the server does not have a buffer for storing out-of-order segments
+  - I tried using the TCP retransmission policy, and while it still successfully performed reliable delivery, once one segment timed out, all future segments also timed out
+  - Sequence and ACK numbers are still based on the TCP policy
+- After receiving a FIN from the server, the client waits for 3 seconds before terminating
+  - This is a lot shorter than the textbook's 30 seconds, but I don't want to keep you waiting

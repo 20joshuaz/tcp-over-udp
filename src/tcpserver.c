@@ -1,5 +1,4 @@
 #include <arpa/inet.h>
-#include <assert.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -19,7 +18,7 @@
 #define ALPHA 0.125
 #define BETA 0.25
 
-int runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
+int runServer(const char *fileStr, int listenPort, const char *ackAddress, int ackPort)
 {
 	// Create socket
 	int serverSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -45,15 +44,15 @@ int runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 	ackAddr.sin_addr.s_addr = inet_addr(ackAddress);
 	ackAddr.sin_port = htons(ackPort);
 
-	// serverSegment holds segments created by the server.
-	// clientSegment holds segments received from the client.
+	// serverSegment holds segments created by the server
+	// clientSegment holds segments received from the client
 	struct TCPSegment serverSegment, clientSegment;
 	ssize_t clientSegmentLen;  // Amount of data in clientSegment (including TCP header)
 	// The next seq expected to be sent by the client (i.e., the ACK sent back to the client)
 	uint32_t nextExpectedClientSeq;
 	/*
 	 * Listen for SYN:
-	 *  - Call recvfrom.
+	 *  - Call recvfrom
 	 *  - When segment is received, check that it is not corrupted and the SYN flag is set.
 	 *    If so, break from loop; else, repeat.
 	 */
@@ -89,7 +88,7 @@ int runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 
 	/*
 	 * Send SYNACK and listen for ACK:
-	 *  - Send SYNACK.
+	 *  - Send SYNACK
 	 *  - Call recvfrom. If nothing is received within the timeout, increase it and repeat.
 	 *  - If a segment is received, check that is it not corrupted, the ACK is ISN + 1,
 	 *    and the ACK flag is set. If so, break from loop; else, repeat.
@@ -150,13 +149,13 @@ int runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 
 	/*
 	 * Receive file:
-	 *  - The client sends the file, so all the server has to do is listen.
+	 *  - The client sends the file, so all the server has to do is listen
 	 *  - When a segment is received, check if it is corrupted. If it is, then ignore it.
 	 *  - Else, check if the FIN flag is set. If so, break from loop.
 	 *  - Else, check the segment's seq. If the seq is the next expected one, write to the file
 	 *    and update the next expected seq.
 	 *  - Regardless if the seq is the next expected one, send an ACK to the client
-	 *    specifying the next expected seq.
+	 *    specifying the next expected seq
 	 */
 	fprintf(stderr, "log: receiving file\n");
 	for (;;) {
@@ -220,14 +219,14 @@ int runServer(char *fileStr, int listenPort, char *ackAddress, int ackPort)
 
 	/*
 	 * Send FIN:
-	 *  - Send FIN.
+	 *  - Send FIN
 	 *  - Call recvfrom. If nothing is received within the timeout, increase it and repeat.
 	 *  - If a segment is received, check that it is not corrupted. If it is, then ignore it.
 	 *  - Else, check for two cases:
-	 *    - If the ACK is ISN + 1 and the ACK flag is set, then break from loop.
-	 *    - If the seq is the next expected one and the FIN flag is sent, then resend ACK.
-	 *    - Else, the segment is a duplicate, so ignore.
-	 *  - Repeat.
+	 *    - If the ACK is ISN + 1 and the ACK flag is set, then break from loop
+	 *    - If the seq is the next expected one and the FIN flag is sent, then resend ACK
+	 *    - Else, the segment is a duplicate, so ignore
+	 *  - Repeat
 	 */
 	fprintf(stderr, "log: sending FIN\n");
 	for (;;) {
@@ -295,13 +294,13 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	char *fileStr = argv[1];
+	const char *fileStr = argv[1];
 	int listenPort = getPort(argv[2]);
 	if (!listenPort) {
 		fprintf(stderr, "error: invalid listening port\n");
 		return 1;
 	}
-	char *ackAddress = argv[3];
+	const char *ackAddress = argv[3];
 	if (!isValidIP(ackAddress)) {
 		fprintf(stderr, "error: invalid ack address\n");
 		return 1;

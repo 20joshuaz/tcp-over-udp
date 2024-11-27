@@ -24,16 +24,15 @@ struct TCPSegment {
 
 	char data[MSS];
 };
-
 static_assert(sizeof(struct TCPSegment) == HEADER_LEN + MSS,
 	"TCPSegment struct not packed");
 
-uint16_t calculateSumOfHeaderWords(struct TCPSegment *);
-int isFlagSet(struct TCPSegment *, uint8_t);
+uint16_t calculateSumOfHeaderWords(const struct TCPSegment *);
+int isFlagSet(const struct TCPSegment *, uint8_t);
 void fillTCPSegment(struct TCPSegment *, uint16_t, uint16_t,
-	uint32_t, uint32_t, uint8_t, char *, int);
+	uint32_t, uint32_t, uint8_t, const char *, int);
 void convertTCPSegment(struct TCPSegment *, int);
-int isChecksumValid(struct TCPSegment *);
-void printTCPHeader(struct TCPSegment *);
+int isChecksumValid(const struct TCPSegment *);
+void printTCPHeader(const struct TCPSegment *);
 
 #endif
