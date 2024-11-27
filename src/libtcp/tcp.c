@@ -5,25 +5,25 @@
 #include "tcp.h"
 
 /*
- * Checks if the nth bit is set in num.
+ * Check if the nth bit is set in num
  */
-int getNthBit(int num, int n)
+static int getNthBit(int num, int n)
 {
 	return num >> n & 1;
 }
 
 /*
- * Sets the nth bit in num to 1.
+ * Set the nth bit in num to 1
  */
-int setNthBit(int num, int n)
+static int setNthBit(int num, int n)
 {
 	return num | (1 << n);
 }
 
 /*
- * Performs a bitwise sum between a and b. Stores the result and carryover.
+ * Perform a bitwise sum between a and b. Result and carryover are stored.
  */
-void doBitwiseSum(uint16_t a, uint16_t b, uint16_t *resPtr, uint16_t *carryoverPtr)
+static void doBitwiseSum(uint16_t a, uint16_t b, uint16_t *resPtr, uint16_t *carryoverPtr)
 {
 	uint16_t res = 0;
 	int carryover = 0;
@@ -47,9 +47,9 @@ void doBitwiseSum(uint16_t a, uint16_t b, uint16_t *resPtr, uint16_t *carryoverP
 }
 
 /*
- * Calculates the sum between a and b. Wraps carryovers around.
+ * Calculate the sum between a and b. Carryovers are wrapped around.
  */
-uint16_t calculateSumWithOverflow(uint16_t a, uint16_t b)
+static uint16_t calculateSumWithOverflow(uint16_t a, uint16_t b)
 {
 	do {
 		doBitwiseSum(a, b, &a, &b);
@@ -58,9 +58,9 @@ uint16_t calculateSumWithOverflow(uint16_t a, uint16_t b)
 }
 
 /*
- * Calculates the sum of all the words in the header.
+ * Calculate the sum of all the words in the header
  */
-uint16_t calculateSumOfHeaderWords(struct TCPSegment *segment)
+uint16_t calculateSumOfHeaderWords(const struct TCPSegment *segment)
 {
 	uint16_t *rawSegmentPtr = (uint16_t *)segment;
 	uint16_t sum = 0;
@@ -71,18 +71,18 @@ uint16_t calculateSumOfHeaderWords(struct TCPSegment *segment)
 }
 
 /*
- * Checks whether a flag is set in a header.
+ * Check whether a flag is set in a header
  */
-int isFlagSet(struct TCPSegment *segment, uint8_t flag)
+int isFlagSet(const struct TCPSegment *segment, uint8_t flag)
 {
 	return (segment->flags & flag) == flag;
 }
 
 /*
- * Fills a TCP segment.
+ * Fill a TCP segment
  */
 void fillTCPSegment(struct TCPSegment *segment, uint16_t sourcePort, uint16_t destPort,
-	uint32_t seqNum, uint32_t ackNum, uint8_t flags, char *data, int dataLen)
+	uint32_t seqNum, uint32_t ackNum, uint8_t flags, const char *data, int dataLen)
 {
 	segment->sourcePort = sourcePort;
 	segment->destPort = destPort;
@@ -101,7 +101,7 @@ void fillTCPSegment(struct TCPSegment *segment, uint16_t sourcePort, uint16_t de
 }
 
 /*
- * Converts a TCP segment to network or host byte order.
+ * Convert a TCP segment to network or host byte order
  */
 void convertTCPSegment(struct TCPSegment *segment, int toNetwork)
 {
@@ -127,9 +127,9 @@ void convertTCPSegment(struct TCPSegment *segment, int toNetwork)
 }
 
 /*
- * Determines whether a segment is corrupt using its checksum.
+ * Determine whether a segment is corrupt using its checksum
  */
-int isChecksumValid(struct TCPSegment *segment)
+int isChecksumValid(const struct TCPSegment *segment)
 {
 	uint16_t totalSum = calculateSumOfHeaderWords(segment);
 	for (int i = 0; i < 16; i++) {
@@ -141,9 +141,9 @@ int isChecksumValid(struct TCPSegment *segment)
 }
 
 /*
- * Print a TCP header.
+ * Print a TCP header
  */
-void printTCPHeader(struct TCPSegment *segment)
+void printTCPHeader(const struct TCPSegment *segment)
 {
 	fprintf(stderr, "{\n");
 	fprintf(stderr, "\tsourcePort: %d\n", segment->sourcePort);

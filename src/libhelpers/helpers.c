@@ -5,11 +5,11 @@
 #include "helpers.h"
 
 /*
- * Checks whether a string is a number (contains only numerals).
+ * Check whether a string is a number (contains only numerals)
  */
-int isNumber(char *s)
+int isNumber(const char *s)
 {
-	for (char *trav = s; *trav; trav++) {
+	for (const char *trav = s; *trav; trav++) {
 		if (!isdigit(*trav)) {
 			return 0;
 		}
@@ -18,9 +18,9 @@ int isNumber(char *s)
 }
 
 /*
- * Extracts a port from a string.
+ * Extract a port from a string
  */
-int getPort(char *portStr)
+int getPort(const char *portStr)
 {
 	if (!isNumber(portStr)) {
 		return 0;
@@ -30,11 +30,11 @@ int getPort(char *portStr)
 }
 
 /*
- * Checks whether a string is a valid IP address.
+ * Check whether a string is a valid IP address
  */
-int isValidIP(char *ip)
+int isValidIP(const char *ip)
 {
-	char *trav = ip;
+	const char *trav = ip;
 	int numDots = 0;
 	char curr;
 	while ((curr = *trav++)) {
@@ -47,7 +47,7 @@ int isValidIP(char *ip)
 	char ipCopy[strlen(ip) + 1];
 	strcpy(ipCopy, ip);
 	char *stringp = ipCopy;
-	char *token;
+	const char *token;
 
 	while (stringp) {
 		token = strsep(&stringp, ".");
@@ -63,16 +63,16 @@ int isValidIP(char *ip)
 }
 
 /*
- * Gets the number of microseconds between two timevals.
+ * Get the number of microseconds between two timevals
  */
-int getMicroDiff(struct timeval *startTime, struct timeval *endTime)
+int getMicroDiff(const struct timeval *startTime, const struct timeval *endTime)
 {
 	return (endTime->tv_sec - startTime->tv_sec)*SI_MICRO
 		+ (endTime->tv_usec - startTime->tv_usec);
 }
 
 /*
- * Sets a timeval's fields to the specified number of microseconds.
+ * Set a timeval's fields to the specified number of microseconds
  */
 void setMicroTime(struct timeval *tv, int totalMicro)
 {

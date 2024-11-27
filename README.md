@@ -72,11 +72,10 @@ An example of a valid run is
     - delivery, receipt, and timeouts during connection teardown
     - fatal errors
 - The code works as is. You can adjust some variables by changing the `define` macros at the top of `tcpclient.c` and `tcpserver.c`.
-- The number of segments in the client's window is the inputted window size divided by (using integer division) the MSS.
-- Because this project does not implement flow control, the receive window field is not used and is set to zero.
-- The sequence numbers don't wrap around, so the largest file you can transfer is around 2<sup>32</sup> bytes.
+- The number of segments in the client's window is the inputted window size divided by (using integer division) the MSS
+- Because this project does not implement flow control, the receive window field is not used and is set to zero
+- The sequence numbers don't wrap around, so the largest file you can transfer is around 2<sup>32</sup> bytes
 - Though I haven't seen it happen, it is technically possible for the server to never quit because it never receives an ACK for its FIN. In this case, you can safely quit the program. The output file should be written to.
 
 ## Testing Environment
 - Works on my M1 Mac and a VM running Ubuntu
-  - `static_assert` (used in `libtcp/tcp.h` to ensure packed struct) requires at least C11
