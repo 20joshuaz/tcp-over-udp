@@ -4,7 +4,7 @@
 #include "window.h"
 
 /*
- * Constructs a new TCP segment window.
+ * Construct a new TCP segment window
  */
 struct Window *newWindow(int capacity)
 {
@@ -27,7 +27,7 @@ struct Window *newWindow(int capacity)
 }
 
 /*
- * Frees a window.
+ * Free a window
  */
 void freeWindow(struct Window *window)
 {
@@ -35,20 +35,20 @@ void freeWindow(struct Window *window)
 	free(window);
 }
 
-int isEmpty(struct Window *window)
+int isEmpty(const struct Window *window)
 {
 	return window->length == 0;
 }
 
-int isFull(struct Window *window)
+int isFull(const struct Window *window)
 {
 	return window->length == window->capacity;
 }
 
 /*
- * Gets the next index in a window (since the index may wrap around).
+ * Get the next index in a window (since the index may wrap around)
  */
-int next(struct Window *window, int index)
+int next(const struct Window *window, int index)
 {
 	if (++index == window->capacity) {
 		return 0;
@@ -57,9 +57,9 @@ int next(struct Window *window, int index)
 }
 
 /*
- * Offer a TCP segment entry to the window.
+ * Offer a TCP segment entry to the window
  */
-void offer(struct Window *window, struct TCPSegmentEntry *entry)
+void offer(struct Window *window, const struct TCPSegmentEntry *entry)
 {
 	if (isFull(window)) {
 		return;
@@ -70,7 +70,7 @@ void offer(struct Window *window, struct TCPSegmentEntry *entry)
 }
 
 /*
- * Deletes the first segment in a window.
+ * Delete the first segment in a window
  */
 void deleteHead(struct Window *window)
 {

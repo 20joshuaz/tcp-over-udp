@@ -1,5 +1,4 @@
 #include <arpa/inet.h>
-#include <assert.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -22,7 +21,7 @@
 #define FINAL_WAIT 3  // How long the client waits after receiving an ACK for its FIN, in seconds
 
 /*
- * Using the sample RTT, updates the estimated RTT, dev RTT, and timeout.
+ * Using the sample RTT, update the estimated RTT, dev RTT, and timeout
  */
 void updateRTTAndTimeout(int sampleRTT, int *estimatedRTTPtr, int *devRTTPtr,
 	int *timeoutPtr, float alpha, float beta)
@@ -47,7 +46,7 @@ void updateRTTAndTimeout(int sampleRTT, int *estimatedRTTPtr, int *devRTTPtr,
 	*timeoutPtr = (int)newTimeout;
 }
 
-int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, int ackPort)
+int runClient(const char *fileStr, const char *udplAddress, int udplPort, int windowSize, int ackPort)
 {
 	// Create socket
 	int clientSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -73,8 +72,8 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 	udplAddr.sin_addr.s_addr = inet_addr(udplAddress);
 	udplAddr.sin_port = htons(udplPort);
 
-	// clientSegment holds segments created by the client.
-	// serverSegment holds segments received from the server.
+	// clientSegment holds segments created by the client
+	// serverSegment holds segments received from the server
 	struct TCPSegment clientSegment, serverSegment;
 	ssize_t serverSegmentLen;  // Amount of data in serverSegment
 	int timeoutMicros = INITIAL_TIMEOUT * SI_MICRO;  // Transmission timeout
@@ -96,13 +95,13 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 
 	/*
 	 * Send SYN:
-	 *  - Send SYN.
+	 *  - Send SYN
 	 *  - Call recvfrom. If nothing is received within the timeout, increase it
 	 *    and mark the segment's sample RTT as not being measured.
 	 *  - If a segment is received, check that is it not corrupted, the ACK is ISN + 1,
 	 *    and the SYNACK flags are set. If so, update the RTT if the sample RTT was measured
 	 *    and break from loop.
-	 *  - Else, ignore and repeat.
+	 *  - Else, ignore and repeat
 	 */
 	fprintf(stderr, "log: sending SYN\n");
 	gettimeofday(&absoluteStartTime, NULL);
@@ -203,7 +202,7 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 	 *  - If a segment is received, check if it is corrupted. If it is, then ignore it.
 	 *  - Else, check the segment's ACK. If it is in the window, shift the window up to the ACK.
 	 *    - If the segment being timed is ACKed, then stop its timer
-	 *      and adjust the timeout based on the segment's RTT.
+	 *      and adjust the timeout based on the segment's RTT
 	 */
 	fprintf(stderr, "log: sending file\n");
 	do {
@@ -302,8 +301,7 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 
 				timeRemaining = timeoutMicros;
 				resumeTimer = 0;
-			}
-			else if (serverACKNum == ISN + 1 && isFlagSet(&serverSegment, SYN_FLAG | ACK_FLAG)) {
+			} else if (serverACKNum == ISN + 1 && isFlagSet(&serverSegment, SYN_FLAG | ACK_FLAG)) {
 				if (sendto(clientSocket, &clientSegment, HEADER_LEN, 0,
 					(struct sockaddr *)&udplAddr, sizeof(udplAddr)) != HEADER_LEN) {
 					perror("sendto");
@@ -311,8 +309,7 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 					close(fd);
 					goto fail;
 				}
-			}
-			// else ACK out of range
+			} // else ACK out of range
 		}
 		if (resumeTimer) {
 			timeElapsed = getMicroDiff(&startTime, &endTime);
@@ -333,7 +330,7 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 
 	/*
 	 * Send FIN:
-	 *  - Send FIN.
+	 *  - Send FIN
 	 *  - Call recvfrom. If nothing is received within the timeout, increase it and repeat.
 	 *  - If a segment is received, check that it is not corrupted, the ACK is for the next seq,
 	 *    and the ACK flag is set. If so, break from loop; else, repeat.
@@ -410,7 +407,7 @@ int runClient(char *fileStr, char *udplAddress, int udplPort, int windowSize, in
 
 	/*
 	 * Send ACK:
-	 *  - Send ACK.
+	 *  - Send ACK
 	 *  - Call recvfrom. If nothing is received within the timeout,
 	 *    break from loop and terminate program (final timeout).
 	 *  - If a segment is received, check that it is not corrupt, the seq is the next expected one,
@@ -474,12 +471,12 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	char *fileStr = argv[1];
+	const char *fileStr = argv[1];
 	if (access(fileStr, F_OK) != 0) {
 		perror("access");
 		return 1;
 	}
-	char *udplAddress = argv[2];
+	const char *udplAddress = argv[2];
 	if (!isValidIP(udplAddress)) {
 		fprintf(stderr, "error: invalid udpl address\n");
 		return 1;
@@ -489,7 +486,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "error: invalid udpl port\n");
 		return 1;
 	}
-	char *windowSizeStr = argv[4];
+	const char *windowSizeStr = argv[4];
 	if (!isNumber(windowSizeStr)) {
 		fprintf(stderr, "error: invalid window size\n");
 		return 1;

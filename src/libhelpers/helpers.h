@@ -7,10 +7,10 @@
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
-int isNumber(char *);
-int getPort(char *);
-int isValidIP(char *);
-int getMicroDiff(struct timeval *, struct timeval *);
+int isNumber(const char *);
+int getPort(const char *);
+int isValidIP(const char *);
+int getMicroDiff(const struct timeval *, const struct timeval *);
 void setMicroTime(struct timeval *, int);
 
 #endif

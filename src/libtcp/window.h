@@ -18,10 +18,10 @@ struct Window {
 
 struct Window *newWindow(int);
 void freeWindow(struct Window *);
-int isEmpty(struct Window *);
-int isFull(struct Window *);
-int next(struct Window *, int);
-void offer(struct Window *, struct TCPSegmentEntry *);
+int isEmpty(const struct Window *);
+int isFull(const struct Window *);
+int next(const struct Window *, int);
+void offer(struct Window *, const struct TCPSegmentEntry *);
 void deleteHead(struct Window *);
 
 #endif
